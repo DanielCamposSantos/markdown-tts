@@ -6,7 +6,7 @@ import unicodedata
 import webbrowser
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import uvicorn
 from fastapi import (
@@ -21,6 +21,7 @@ from fastapi.staticfiles import (
 )
 from pydantic import (
     BaseModel,
+    Field,
 )
 
 from app.config import (
@@ -41,6 +42,9 @@ from app.services.generation import GenerationService
 from app.persistence import LibraryStore
 from app.jobs import JobRepository, JobWorker
 from app.tts import ModelManager
+from app.domain.models import PlaybackState
+from app.persistence.library import utc_now
+from app.playback import active_unit_at, unit_id
 
 if TYPE_CHECKING:
     from app.services.generation import TtsEngine
@@ -105,6 +109,12 @@ class PlanRequest(
     BaseModel
 ):
     markdown: str
+
+
+class PlaybackUpdateRequest(BaseModel):
+    position_seconds: float = Field(ge=0)
+    active_unit_id: int | None = Field(default=None, ge=0)
+    playback_rate: Literal[0.75, 1.0, 1.25, 1.5, 1.75, 2.0]
 
 
 engine: TtsEngine | None = None
@@ -344,10 +354,108 @@ def persisted_generation(generation_id: str):
         raise HTTPException(status_code=404, detail="Geração não encontrada.")
     data = generation.to_dict()
     if generation.status == "completed":
-        data["metadata"] = library.metadata(generation)
-        data["audio_url"] = f"/api/generations/{generation_id}/audio"
-        data["download_url"] = f"/api/generations/{generation_id}/download"
+        metadata = library.metadata(generation)
+        artifacts = metadata.get("unit_artifacts") or []
+        available = bool(metadata.get("individual_regeneration_available")) and bool(artifacts) and all(
+            library.resolve(path).is_file() and library.resolve(path).stat().st_size > 0 for path in artifacts
+        )
+        data["metadata"] = metadata
+        data["regeneration_available"] = available
+        data["artifact_revision"] = generation.artifact_revision
+        data["audio_url"] = f"/api/generations/{generation_id}/audio?revision={generation.artifact_revision}"
+        data["download_url"] = f"/api/generations/{generation_id}/download?revision={generation.artifact_revision}"
     return data
+
+
+@app.post("/api/generations/{generation_id}/units/{unit_id}/regenerate")
+def regenerate_unit(generation_id: str, unit_id: int):
+    library = get_library()
+    generation = library.generations.get(generation_id)
+    if generation is None:
+        raise HTTPException(status_code=404, detail="Geração não encontrada.")
+    if generation.status != "completed":
+        raise HTTPException(status_code=409, detail="Geração ainda não está concluída.")
+    metadata = library.metadata(generation)
+    artifacts = metadata.get("unit_artifacts") or []
+    if not metadata.get("individual_regeneration_available") or not artifacts:
+        raise HTTPException(status_code=409, detail="Esta geração foi criada antes do suporte a regeneração individual.")
+    ids = {int(unit["index"]) for unit in metadata.get("units", [])}
+    if unit_id not in ids:
+        raise HTTPException(status_code=404, detail="SpeechUnit não encontrada.")
+    if not all(library.resolve(path).is_file() and library.resolve(path).stat().st_size > 0 for path in artifacts):
+        raise HTTPException(status_code=409, detail="Artefatos de unidade incompletos.")
+    with library.database.connect() as connection:
+        pending = connection.execute(
+            "SELECT 1 FROM generation_jobs WHERE generation_id=? AND operation='regenerate_unit' AND status IN ('queued','running','cancelling')",
+            (generation_id,),
+        ).fetchone()
+    if pending:
+        raise HTTPException(status_code=409, detail="Já existe uma regeneração pendente para esta geração.")
+    job = JobRepository(library.database).enqueue_regeneration(
+        generation_id, generation.document_id, unit_id, generation.artifact_revision
+    )
+    get_worker().wake()
+    return {"job_id": job.job_id, "status": job.status}
+
+
+@app.get("/api/generations/{generation_id}/regenerations")
+def regeneration_history(generation_id: str):
+    library = get_library()
+    if library.generations.get(generation_id) is None:
+        raise HTTPException(status_code=404, detail="Geração não encontrada.")
+    with library.database.connect() as connection:
+        rows = connection.execute(
+            "SELECT * FROM unit_regenerations WHERE generation_id=? ORDER BY created_at",
+            (generation_id,),
+        ).fetchall()
+    return {"regenerations": [dict(row) for row in rows]}
+
+
+def _playback_context(generation_id: str):
+    library = get_library()
+    generation = library.generations.get(generation_id)
+    if generation is None:
+        raise HTTPException(status_code=404, detail="Geração não encontrada.")
+    metadata = library.metadata(generation) if generation.status == "completed" else {}
+    timeline = metadata.get("timeline", [])
+    duration = max(0.0, float(generation.duration_seconds or 0.0))
+    return library, generation, timeline, duration
+
+
+def _normalized_playback(state, timeline, duration):
+    position = min(max(0.0, float(state.position_seconds)), duration)
+    active = active_unit_at(timeline, position)
+    return {
+        "generation_id": state.generation_id,
+        "position_seconds": position,
+        "active_unit_id": active,
+        "playback_rate": state.playback_rate,
+        "updated_at": state.updated_at,
+    }
+
+
+@app.get("/api/generations/{generation_id}/playback")
+def get_playback(generation_id: str):
+    library, _, timeline, duration = _playback_context(generation_id)
+    state = library.playback.get_or_default(generation_id)
+    return _normalized_playback(state, timeline, duration)
+
+
+@app.put("/api/generations/{generation_id}/playback")
+def put_playback(generation_id: str, request: PlaybackUpdateRequest):
+    library, _, timeline, duration = _playback_context(generation_id)
+    valid_ids = {unit_id(entry) for entry in timeline}
+    if request.active_unit_id is not None and request.active_unit_id not in valid_ids:
+        raise HTTPException(status_code=422, detail="SpeechUnit não pertence à geração.")
+    position = min(request.position_seconds, duration)
+    state = PlaybackState(
+        generation_id=generation_id,
+        position_seconds=position,
+        active_unit_id=active_unit_at(timeline, position),
+        playback_rate=float(request.playback_rate),
+        updated_at=utc_now(),
+    )
+    return _normalized_playback(library.playback.upsert(state), timeline, duration)
 
 
 def generation_audio_file(generation_id: str):
@@ -418,7 +526,14 @@ def cancel_job(job_id: str):
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if job.status == "cancelled":
-        get_library().mark_failed(job.generation_id, "Geração cancelada antes do início.")
+        if job.operation == "generate":
+            get_library().mark_failed(job.generation_id, "Geração cancelada antes do início.")
+        else:
+            with get_library().database.connect() as connection:
+                connection.execute(
+                    "UPDATE unit_regenerations SET status='cancelled', completed_at=? WHERE job_id=?",
+                    (utc_now(), job.job_id),
+                )
     get_worker().wake()
     return job_status(job.job_id)
 

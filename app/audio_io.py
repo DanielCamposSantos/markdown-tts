@@ -18,6 +18,17 @@ from app.config import (
 AudioTimelineEntry = TimelineEntry
 
 
+def write_unit_wav(audio: torch.Tensor, sample_rate: int, destination: Path) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    data = as_audio_tensor(audio).transpose(0, 1).contiguous().numpy()
+    sf.write(str(destination), data, sample_rate, subtype="FLOAT")
+
+
+def read_unit_wav(path: Path) -> tuple[torch.Tensor, int]:
+    data, sample_rate = sf.read(str(path), dtype="float32", always_2d=True)
+    return torch.from_numpy(data.T.copy()), int(sample_rate)
+
+
 def as_audio_tensor(
     audio,
 ) -> torch.Tensor:

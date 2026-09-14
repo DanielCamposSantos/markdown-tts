@@ -31,7 +31,12 @@ Nao executar geracao TTS durante testes normais. Nao baixar pesos ou instalar pa
 - `app/audio_io.py`: audio tensor, silencio, concatenacao, timeline e WAV temporario via `soundfile` para MP3 via FFmpeg.
 - `app/config.py`: checkpoint, parametros de amostragem, paths e bitrate.
 - `app/persistence/`: SQLite versionado, repositories e artefatos atomicos da biblioteca.
-- `static/`: interface e player.
+- `app/playback.py`: helpers deterministas de timeline e navegacao.
+- `app/services/regeneration.py`: regeneracao granular, reassembly e publicacao revisionada.
+- `static/`: interface e player retomavel; PlaybackState mutavel fica no SQLite.
+
+Novas generations preservam WAV FLOAT por unidade. Geracoes legacy sem esses
+artefatos nunca devem recortar MP3 nem regenerar o documento inteiro como fallback.
 
 O modelo e carregado sob demanda. O modelo principal usa BF16 na GPU; o audio tokenizer e movido para a GPU quando necessario e permanece em FP32 no fluxo validado. Apenas uma geracao pesada ocorre por vez.
 O `ModelManager` mantem o modelo pronto por 300 segundos apos uso; processor e

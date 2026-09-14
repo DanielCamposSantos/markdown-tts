@@ -10,6 +10,7 @@ from app.domain.models import GenerationProgress
 from app.persistence.database import Database
 from app.persistence.library import LibraryStore, utc_now
 from app.services.generation import GenerationCancelled, GenerationService
+from app.services.regeneration import RegenerationService
 
 
 @dataclass(frozen=True)
@@ -30,6 +31,8 @@ class GenerationJob:
     current: int = 0
     total: int = 0
     message: str = "Aguardando início..."
+    operation: str = "generate"
+    unit_id: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -53,6 +56,19 @@ class JobRepository:
                 "INSERT INTO generation_jobs (job_id, generation_id, document_id, "
                 "status, created_at, updated_at, message) VALUES (?, ?, ?, 'queued', ?, ?, ?)",
                 (job_id, generation_id, document_id, now, now, "Aguardando início..."),
+            )
+        return self.get(job_id)
+
+    def enqueue_regeneration(self, generation_id: str, document_id: str, unit_id: int, revision: int) -> GenerationJob:
+        job_id, regeneration_id, now = uuid.uuid4().hex, uuid.uuid4().hex, utc_now()
+        with self.database.connect() as connection:
+            connection.execute(
+                "INSERT INTO generation_jobs (job_id,generation_id,document_id,operation,unit_id,status,created_at,updated_at,message) VALUES (?,?,?,?,?,'queued',?,?,?)",
+                (job_id, generation_id, document_id, "regenerate_unit", unit_id, now, now, "Regeneração aguardando início..."),
+            )
+            connection.execute(
+                "INSERT INTO unit_regenerations (regeneration_id,job_id,generation_id,unit_id,previous_revision,new_revision,status,created_at) VALUES (?,?,?,?,?,?,?,?)",
+                (regeneration_id, job_id, generation_id, unit_id, revision, revision + 1, "queued", now),
             )
         return self.get(job_id)
 
@@ -137,7 +153,7 @@ class JobRepository:
         now = utc_now()
         with self.database.connect() as connection:
             active = connection.execute(
-                "SELECT generation_id FROM generation_jobs "
+                "SELECT generation_id, operation, job_id FROM generation_jobs "
                 "WHERE status IN ('running', 'cancelling')"
             ).fetchall()
             result = connection.execute(
@@ -147,11 +163,25 @@ class JobRepository:
                 (now, now, "Execução interrompida pelo reinício."),
             )
             for row in active:
-                connection.execute(
-                    "UPDATE generations SET status = 'failed', updated_at = ?, error = ? "
-                    "WHERE generation_id = ? AND status = 'running'",
-                    (now, "Execução interrompida pelo reinício.", row[0]),
-                )
+                if row["operation"] == "generate":
+                    connection.execute(
+                        "UPDATE generations SET status = 'failed', updated_at = ?, error = ? WHERE generation_id = ? AND status = 'running'",
+                        (now, "Execução interrompida pelo reinício.", row["generation_id"]),
+                    )
+                else:
+                    history = connection.execute(
+                        "SELECT status FROM unit_regenerations WHERE job_id=?", (row["job_id"],)
+                    ).fetchone()
+                    if history and history["status"] == "completed":
+                        connection.execute(
+                            "UPDATE generation_jobs SET status='completed', phase='completed', progress=100, completed_at=?, message='Áudio pronto.' WHERE job_id=?",
+                            (now, row["job_id"]),
+                        )
+                    else:
+                        connection.execute(
+                            "UPDATE unit_regenerations SET status='interrupted', completed_at=?, error=? WHERE job_id=?",
+                            (now, "Execução interrompida pelo reinício.", row["job_id"]),
+                        )
         return result.rowcount
 
 
@@ -195,6 +225,22 @@ class JobWorker:
         generation = self.library.generations.get(job.generation_id)
         document = self.library.documents.get(job.document_id)
         try:
+            if job.operation == "regenerate_unit":
+                with self.library.database.connect() as connection:
+                    connection.execute(
+                        "UPDATE unit_regenerations SET status='running' WHERE job_id=?",
+                        (job.job_id,),
+                    )
+                service = self.service_factory()
+                RegenerationService(service.engine).regenerate(
+                    self.library, job.generation_id, int(job.unit_id), job.job_id,
+                    progress_callback=lambda phase, current, total, message: self.repository.update_progress(
+                        job.job_id, GenerationProgress(phase, current, total, message, 5 + 90 * current / max(total, 1))
+                    ),
+                    should_cancel=lambda: self.repository.get(job.job_id).status == "cancelling",
+                )
+                self.repository.transition(job.job_id, "completed")
+                return True
             markdown = self.library.resolve(document.markdown_path).read_text(encoding="utf-8")
             generation_dir = self.library.root / document.document_id / generation.generation_id
             staging, final = generation_dir / ".audio.staging.mp3", generation_dir / "audio.mp3"
@@ -206,10 +252,21 @@ class JobWorker:
             self.repository.transition(job.job_id, "completed")
         except GenerationCancelled:
             self.repository.transition(job.job_id, "cancelled")
+            if job.operation == "regenerate_unit":
+                self._finish_regeneration(job, "cancelled")
         except Exception as exc:
             current = self.repository.get(job.job_id)
             if current.status in {"running", "cancelling"}:
                 self.repository.transition(
                     job.job_id, "failed", error=self.library.sanitize_error(str(exc))
                 )
+            if job.operation == "regenerate_unit":
+                self._finish_regeneration(job, "failed", self.library.sanitize_error(str(exc)))
         return True
+
+    def _finish_regeneration(self, job, status: str, error: str | None = None) -> None:
+        with self.library.database.connect() as connection:
+            connection.execute(
+                "UPDATE unit_regenerations SET status=?, completed_at=?, error=? WHERE job_id=?",
+                (status, utc_now(), error, job.job_id),
+            )

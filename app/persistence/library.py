@@ -14,11 +14,13 @@ from app.config import (
     REFERENCE_AUDIO, SAMPLE_RATE,
 )
 from app.persistence.database import Database
+from app.audio_io import read_unit_wav
 from app.persistence.repositories import (
     DocumentRecord,
     DocumentRepository,
     GenerationRecord,
     GenerationRepository,
+    PlaybackRepository,
 )
 
 
@@ -42,6 +44,7 @@ class LibraryStore:
         self.database.initialize()
         self.documents = DocumentRepository(self.database)
         self.generations = GenerationRepository(self.database)
+        self.playback = PlaybackRepository(self.database)
         self._voice_sha256: str | None = None
 
     def _relative(self, path: Path) -> str:
@@ -92,7 +95,7 @@ class LibraryStore:
         generation = GenerationRecord(
             generation_id, document_id, "queued", now, now, None, None, None, None,
             None, None, MODEL_ID, LANGUAGE, "voices/narrator_reference.wav",
-            voice_sha256, content_hash, None,
+            voice_sha256, content_hash, None, 0,
         )
         try:
             with self.database.connect() as connection:
@@ -105,8 +108,8 @@ class LibraryStore:
                     "created_at, updated_at, completed_at, duration_seconds, "
                     "generation_seconds, decode_seconds, audio_path, metadata_path, "
                     "model_id, language, voice_reference_path, voice_sha256, "
-                    "markdown_hash, error) VALUES "
-                    "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "markdown_hash, error, artifact_revision) VALUES "
+                    "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     tuple(asdict(generation).values()),
                 )
         except Exception:
@@ -133,11 +136,31 @@ class LibraryStore:
         if not staging_audio.is_file() or staging_audio.stat().st_size == 0:
             raise RuntimeError("Áudio final ausente ou vazio")
         final_audio.parent.mkdir(parents=True, exist_ok=True)
-        os.replace(staging_audio, final_audio)
+        unit_staging = staging_audio.parent / ".units.staging"
+        capable = unit_staging.is_dir()
+        if capable:
+            expected = [unit_staging / f"{unit.index:06d}.wav" for unit in units]
+            if len(list(unit_staging.glob("*.wav"))) != len(units) or any(
+                not path.is_file() or path.stat().st_size == 0 for path in expected
+            ):
+                raise RuntimeError("Artefatos de unidade incompletos")
+            artifact_sample_rate = None
+            for path in expected:
+                audio, sample_rate = read_unit_wav(path)
+                if audio.numel() == 0 or (
+                    artifact_sample_rate is not None and sample_rate != artifact_sample_rate
+                ):
+                    raise RuntimeError("Artefato de unidade inválido")
+                artifact_sample_rate = sample_rate
+        units_dir = final_audio.parent / "units-r1"
+        revision_audio = final_audio.parent / "audio-r1.mp3" if capable else final_audio
+        if capable:
+            os.replace(unit_staging, units_dir)
+        os.replace(staging_audio, revision_audio)
         metadata_path = final_audio.parent / "metadata.json"
         now = utc_now()
         metadata = {
-            "schema_version": 1,
+            "schema_version": 2,
             "document_id": document.document_id,
             "generation_id": generation.generation_id,
             "title": document.title,
@@ -145,7 +168,10 @@ class LibraryStore:
             "created_at": generation.created_at,
             "updated_at": now,
             "markdown_path": document.markdown_path,
-            "audio": {"mp3_path": self._relative(final_audio), "wav_path": None},
+            "artifact_revision": 1 if capable else 0,
+            "individual_regeneration_available": capable,
+            "audio": {"mp3_path": self._relative(revision_audio), "wav_path": None},
+            "unit_artifacts": [self._relative(units_dir / f"{unit.index:06d}.wav") for unit in units] if capable else [],
             "model": {"id": MODEL_ID},
             "voice": {"reference_path": "voices/narrator_reference.wav", "sha256": generation.voice_sha256},
             "audio_format": {"sample_rate": SAMPLE_RATE, "mp3_bitrate": MP3_BITRATE},
@@ -169,7 +195,7 @@ class LibraryStore:
         json.loads(metadata_path.read_text(encoding="utf-8"))
         self.generations.complete(
             generation.generation_id, now, result,
-            self._relative(final_audio), self._relative(metadata_path),
+            self._relative(revision_audio), self._relative(metadata_path),
         )
         stored = self.generations.get(generation.generation_id)
         if stored is None:

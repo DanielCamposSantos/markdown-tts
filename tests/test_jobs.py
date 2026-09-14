@@ -64,7 +64,7 @@ def test_migration_v1_to_v2(tmp_path):
         connection.executescript(MIGRATIONS[0][1])
         connection.execute("INSERT INTO schema_migrations VALUES (1, 'now')")
     database.initialize()
-    assert database.schema_version == 2
+    assert database.schema_version == 4
 
 
 def test_enqueue_fifo_progress_and_reopen(library):

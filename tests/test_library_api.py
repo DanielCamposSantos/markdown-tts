@@ -47,7 +47,7 @@ def test_library_document_and_generation_apis_survive_reopen(monkeypatch, tmp_pa
     assert detail["markdown"] == "Texto."
     assert detail["generations"][0]["status"] == "completed"
     assert persisted["metadata"]["timeline"][0]["end_seconds"] == 0.75
-    assert persisted["audio_url"].endswith("/audio")
+    assert "/audio?revision=" in persisted["audio_url"]
 
 
 def test_library_apis_return_404_for_unknown_ids(monkeypatch, tmp_path):

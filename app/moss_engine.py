@@ -18,6 +18,7 @@ from app.audio_io import (
     AudioTimelineEntry,
     combine_audio,
     export_mp3,
+    write_unit_wav,
 )
 
 from app.config import (
@@ -391,6 +392,8 @@ class MossEngine:
             ProgressCallback
             | None = None,
         should_cancel: Callable[[], bool] | None = None,
+        unit_output_dir: Path | None = None,
+        seed_offset: int = 0,
     ) -> GenerationResult:
         if not units:
             raise ValueError(
@@ -458,7 +461,7 @@ class MossEngine:
                     audio_pad_token_id=int(
                         self.processor.model_config.audio_pad_token_id
                     ),
-                    first_seed=BASE_SEED + unit.index,
+                    first_seed=BASE_SEED + unit.index + seed_offset,
                     should_cancel=should_cancel,
                 )
 
@@ -534,6 +537,8 @@ class MossEngine:
                         audio,
                     )
                 )
+                if unit_output_dir is not None:
+                    write_unit_wav(audio, int(self.processor.model_config.sampling_rate), unit_output_dir / f"{unit.index:06d}.wav")
 
         finally:
             self.processor.audio_tokenizer = (

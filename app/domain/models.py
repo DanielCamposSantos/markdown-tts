@@ -31,6 +31,18 @@ class TimelineEntry:
 
 
 @dataclass(frozen=True)
+class PlaybackState:
+    generation_id: str
+    position_seconds: float
+    active_unit_id: int | None
+    playback_rate: float
+    updated_at: str | None
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
 class GenerationProgress:
     phase: str
     current: int

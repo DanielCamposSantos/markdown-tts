@@ -4,6 +4,7 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 from app.persistence.database import Database
+from app.domain.models import PlaybackState
 
 
 @dataclass(frozen=True)
@@ -38,6 +39,7 @@ class GenerationRecord:
     voice_sha256: str
     markdown_hash: str
     error: str | None
+    artifact_revision: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -84,8 +86,8 @@ class GenerationRepository:
                 "created_at, updated_at, completed_at, duration_seconds, "
                 "generation_seconds, decode_seconds, audio_path, metadata_path, "
                 "model_id, language, voice_reference_path, voice_sha256, "
-                "markdown_hash, error) VALUES "
-                "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "markdown_hash, error, artifact_revision) VALUES "
+                "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 tuple(asdict(record).values()),
             )
 
@@ -131,8 +133,50 @@ class GenerationRepository:
             connection.execute(
                 "UPDATE generations SET status = 'completed', updated_at = ?, "
                 "completed_at = ?, duration_seconds = ?, generation_seconds = ?, "
-                "decode_seconds = ?, audio_path = ?, metadata_path = ?, error = NULL "
+                "decode_seconds = ?, audio_path = ?, metadata_path = ?, error = NULL, "
+                "artifact_revision = CASE WHEN ? LIKE '%audio-r1.mp3' THEN 1 ELSE 0 END "
                 "WHERE generation_id = ?",
                 (now, now, result.duration_seconds, result.generation_seconds,
-                 result.decode_seconds, audio_path, metadata_path, generation_id),
+                 result.decode_seconds, audio_path, metadata_path, audio_path, generation_id),
             )
+
+
+class PlaybackRepository:
+    def __init__(self, database: Database) -> None:
+        self.database = database
+
+    def get(self, generation_id: str) -> PlaybackState | None:
+        with self.database.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM playback_state WHERE generation_id = ?",
+                (generation_id,),
+            ).fetchone()
+        return _record(PlaybackState, row)
+
+    def get_or_default(self, generation_id: str) -> PlaybackState:
+        state = self.get(generation_id)
+        return state or PlaybackState(generation_id, 0.0, None, 1.0, None)
+
+    def upsert(self, state: PlaybackState) -> PlaybackState:
+        with self.database.connect() as connection:
+            connection.execute(
+                "INSERT INTO playback_state "
+                "(generation_id, position_seconds, active_unit_id, playback_rate, updated_at) "
+                "VALUES (?, ?, ?, ?, ?) "
+                "ON CONFLICT(generation_id) DO UPDATE SET "
+                "position_seconds = excluded.position_seconds, "
+                "active_unit_id = excluded.active_unit_id, "
+                "playback_rate = excluded.playback_rate, "
+                "updated_at = excluded.updated_at",
+                (
+                    state.generation_id,
+                    state.position_seconds,
+                    state.active_unit_id,
+                    state.playback_rate,
+                    state.updated_at,
+                ),
+            )
+        stored = self.get(state.generation_id)
+        if stored is None:
+            raise RuntimeError("PlaybackState não persistido")
+        return stored

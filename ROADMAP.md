@@ -144,6 +144,9 @@ reutilizacao por 300 segundos, unload ocioso, recovery de erro e shutdown.
 
 ## Fase 5 - Player, retomada e timeline persistente
 
+**Status:** concluida. Migration v3, PlaybackRepository, API de playback e
+player retomavel validados sem GPU; a timeline real continua autoritativa.
+
 **Objetivo:** tornar a leitura retomavel e navegavel.
 
 **Motivacao:** timestamps ja existem, mas posicao e velocidade nao sao persistidas no servidor.
@@ -165,6 +168,10 @@ reutilizacao por 300 segundos, unload ocioso, recovery de erro e shutdown.
 **Nao mudar:** timestamps calculados a partir do audio nem MP3 salvo.
 
 ## Fase 6 - Regeneracao individual
+
+**Status:** concluida. Novas geracoes preservam WAV FLOAT por unidade; revisoes
+imutaveis, historico SQLite e troca transacional permitem regenerar uma unidade
+pela mesma fila. Geracoes legacy permanecem read-only para esta operacao.
 
 **Objetivo:** regenerar uma SpeechUnit sem refazer o documento inteiro.
 

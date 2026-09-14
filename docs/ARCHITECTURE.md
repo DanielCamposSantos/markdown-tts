@@ -30,9 +30,9 @@ flowchart LR
 
 `markdown_parser.py` usa `markdown-it-py` em CommonMark e produz `MarkdownBlock` para headings, paragraphs, lists, blockquotes e code. `speech_plan.py` produz `SpeechUnit` imutavel, divide paragrafos em frases, adiciona pausas, trata listas contextuais e valida preservacao de conteudo. `link_units` atribui `previous_id` e `next_id`; `section_id`, `paragraph_id` e `sentence_index` apoiam estrutura e navegacao.
 
-`moss_engine.py` codifica a referencia com `soundfile`, move o tokenizer para CUDA, devolve os codigos para CPU, carrega o modelo em BF16 e gera cada unidade independentemente. Antes do decode, o runaway guard conta frames acusticos, rejeita duracoes claramente implausiveis e repete somente a unidade afetada com seed deterministica. Depois o engine decodifica, combina e exporta. `audio_io.py` gera `AudioTimelineEntry` com inicio/fim reais e pausa posterior. Novos MP3s, Markdown e manifests ficam em `library/`; SQLite indexa documentos, geracoes e timeline via metadata.
+`moss_engine.py` codifica a referencia com `soundfile`, move o tokenizer para CUDA, devolve os codigos para CPU, carrega o modelo em BF16 e gera cada unidade independentemente. Antes do decode, o runaway guard conta frames acusticos, rejeita duracoes claramente implausiveis e repete somente a unidade afetada com seed deterministica. Depois o engine decodifica, preserva WAV FLOAT lossless por unidade, combina e exporta. `audio_io.py` gera `AudioTimelineEntry` com inicio/fim reais e pausa posterior. MP3s e manifests revisionados ficam em `library/`; SQLite aponta para a revisao autoritativa.
 
-O frontend faz preview via `/api/plan`, inicia uma geracao, consulta o job por polling de 500 ms, carrega o MP3 e usa timestamps reais para highlight. Possui play/pause, seek bar, velocidade 0.75x-2x, clique na unidade e download.
+O frontend faz preview via `/api/plan`, inicia uma geracao, consulta o job por polling de 500 ms e pode reabrir geracoes concluidas. O player usa timestamps reais para highlight, anterior/proxima, +/-10 s e clique na unidade. Posicao, unidade ativa e velocidade 0.75x-2x ficam na tabela `playback_state` e sao restauradas sem autoplay.
 
 ## CURRENT: problemas e limites
 
@@ -40,10 +40,10 @@ O frontend faz preview via `/api/plan`, inicia uma geracao, consulta o job por p
 - Um worker unico usa claim FIFO atomico, heartbeat e recovery; nao ha paralelismo TTS.
 - O ModelManager faz lazy load, serializa geracoes, reutiliza o modelo BF16 por uma janela ociosa e descarrega de forma controlada.
 - A biblioteca nao possui ainda reconciliation automatica para artefatos orfaos apos crash.
-- WAV opcional e historico de regeneracao ainda nao existem.
-- Cancelamento e cooperativo entre unidades; ASR, retry seletivo e regeneracao nao existem.
+- WAV por unidade e historico de regeneracao existem para novas generations; legacy continua sem capacidade granular.
+- Cancelamento e cooperativo entre unidades; ASR nao existe.
 - O progresso e agregado em parsing, generation, decode e export.
-- O player nao restaura posicao do servidor e nao tem anterior/proxima, +/-10 s ou atalhos.
+- A sincronizacao de playback entre varias abas usa last-write-wins; nao ha realtime.
 - O preview atual e o Speech Plan, nao um renderer Markdown completo.
 - Algumas siglas podem exigir tratamento pontual; nao ha dicionario fonetico.
 - `environment-current.txt` e snapshot diagnostico, nao lock de dependencias.
@@ -154,7 +154,7 @@ O `metadata.json` deve ter `schema_version` e incluir, no minimo:
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "document_id": "...",
   "generation_id": "...",
   "title": "...",
@@ -193,11 +193,16 @@ Em CUDA OOM, o job deve falhar de forma explicita, registrar diagnostico sem seg
 
 Status de GPU e opcional. Se NVML ou metricas equivalentes nao estiverem disponiveis, a API deve retornar `unknown` e o frontend continuar funcional.
 
-## TARGET: regeneracao individual
+## CURRENT: regeneracao individual
 
 A unidade deve ser regenerada usando o mesmo `display_text`, `synthesis_text` efetivo, modelo, referencia canonica e idioma. O resultado deve ser escrito em temporario; depois o assembler recompila a sequencia inteira a partir das unidades, recalculando offsets da unidade alterada e de todas as posteriores. O MP3 final e metadata sao publicados por rename atomico somente quando completos.
 
 A versao anterior deve permanecer ate a nova versao passar validacao estrutural e, se habilitada, ASR. O Markdown nao muda. Para listas contextuais, o ID representa a unidade de sintese inteira; regeneracao de subitem exige primeiro modelar subunidades, nao editar offsets manualmente.
+
+A migration v4 adiciona `artifact_revision`, operacao/unit ID aos jobs e
+`unit_regenerations`. Somente o WAV alvo recebe novo path; os demais continuam
+byte-identical. MP3 e metadata novos sao publicados antes de uma unica transaction
+trocar os ponteiros SQLite e reconciliar PlaybackState pela unidade ativa.
 
 ## TARGET: ASR e validacao
 

@@ -865,3 +865,66 @@ select {
             7px;
     }
 }
+
+.reader-unit {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+}
+
+.regenerate-button {
+    flex: 0 0 auto;
+    padding: 5px 8px;
+    color: var(--muted);
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    cursor: pointer;
+}
+
+.regenerate-button:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.library-row,
+.transport-controls,
+.speed-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.library-row select {
+    min-width: 0;
+    flex: 1;
+    padding: 9px;
+    color: var(--text);
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+}
+
+.library-row button,
+.transport-button {
+    padding: 8px 10px;
+    color: var(--text);
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    cursor: pointer;
+}
+
+.library-row button:disabled,
+.transport-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.4;
+}
+
+.speed-control {
+    color: var(--muted);
+    font-size: 12px;
+}
+
+@media (max-width: 900px) {
+    .player-main { flex-wrap: wrap; }
+    .transport-controls { order: 1; width: 100%; justify-content: center; }
+}

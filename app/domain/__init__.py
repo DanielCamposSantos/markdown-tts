@@ -3,6 +3,7 @@ from app.domain.models import (
     GenerationResult,
     JobStatus,
     TimelineEntry,
+    PlaybackState,
 )
 
 __all__ = [
@@ -10,4 +11,5 @@ __all__ = [
     "GenerationResult",
     "JobStatus",
     "TimelineEntry",
+    "PlaybackState",
 ]

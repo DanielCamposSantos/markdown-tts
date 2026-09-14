@@ -8,7 +8,7 @@ A geracao ocorre localmente depois que o modelo e seus arquivos auxiliares estiv
 
 Este repositorio contem um MVP funcional validado manualmente. O foco atual e preservar a qualidade da voz e estabelecer uma base para robustez, testes, persistencia e melhorias graduais.
 
-O codigo atual e a fonte de verdade para o que esta implementado. A biblioteca local persistente guarda documentos, geracoes, audio e metadata. Cancelamento, ASR, regeneracao individual e atalhos ainda nao fazem parte do MVP.
+O codigo atual e a fonte de verdade para o que esta implementado. A biblioteca local persistente guarda documentos, geracoes, audio, metadata, playback e WAVs por unidade. Regeneracao individual e cancelamento cooperativo usam a mesma fila; ASR nao faz parte do MVP.
 
 ## Arquitetura
 
@@ -54,11 +54,14 @@ A interface e HTML, CSS e JavaScript vanilla. Nao ha build de Node, React ou Vue
 - textarea para Markdown e campo para nome do arquivo;
 - preview debounced do Speech Plan;
 - progresso por fase da geracao;
-- play/pause, seek, download do MP3 e velocidade de 0.75x a 2x;
+- biblioteca minima para reabrir uma geracao concluida;
+- play/pause, anterior/proxima unidade, +/-10 s, seek, download e velocidade de 0.75x a 2x;
 - clique em uma unidade para iniciar a reproducao daquele timestamp;
 - highlight e scroll automatico da unidade ativa conforme o audio toca.
 
-A velocidade altera apenas `audio.playbackRate`; o arquivo MP3 gerado nao e alterado.
+A posicao, unidade ativa e velocidade sao persistidas por geracao no SQLite com
+throttle de 3 segundos e restauradas sem autoplay. A velocidade altera apenas
+`audio.playbackRate`; o arquivo MP3 gerado nao e alterado.
 
 ## Requisitos
 
@@ -150,7 +153,12 @@ Acesse manualmente:
 http://127.0.0.1:7860
 ```
 
-O nome informado pelo usuario e sanitizado para o titulo/download. Novas geracoes ficam em `library/<document_id>/<generation_id>/`, com `audio.mp3` e `metadata.json`; `library.db` e a fonte de verdade. Arquivos legados em `outputs/` permanecem intactos.
+O nome informado pelo usuario e sanitizado para o titulo/download. Novas geracoes ficam em `library/<document_id>/<generation_id>/`, com MP3/metadata versionados e WAV FLOAT lossless por SpeechUnit; `library.db` e a fonte de verdade. Geracoes antigas sem WAVs continuam reproduziveis, mas sao read-only para regeneracao granular.
+
+Na regeneracao manual, a seed base e `BASE_SEED + unit.index +
+100000 * (nova_revisao - 1)`. Os retries do runaway guard continuam somando seu
+offset proprio de 10000 por tentativa; revisao manual e retry permanecem conceitos
+separados.
 
 ## API local
 
@@ -166,6 +174,10 @@ O nome informado pelo usuario e sanitizado para o titulo/download. Novas geracoe
 - `GET /api/library/{document_id}` recupera Markdown e geracoes do documento.
 - `GET /api/generations/{generation_id}` recupera estado, metadata e timeline.
 - `GET /api/generations/{generation_id}/audio` e `/download` servem o audio por ID.
+- `GET` e `PUT /api/generations/{generation_id}/playback` restauram e atualizam
+  posicao, unidade ativa e velocidade por geracao.
+- `POST /api/generations/{generation_id}/units/{unit_id}/regenerate` enfileira
+  regeneracao de uma unica SpeechUnit; `/regenerations` retorna o historico.
 
 Os jobs ativos continuam em memoria. Reiniciar perde o polling do job, mas documentos e geracoes concluidas continuam consultaveis pela biblioteca SQLite.
 
@@ -225,7 +237,7 @@ Uma conversao indiscriminada do audio tokenizer inteiro para BF16 tambem nao e a
 - CUDA e a referencia de voz sao obrigatorios para a geracao atual; sem CUDA o engine falha ao inicializar.
 - E necessario ter FFmpeg no `PATH`.
 - Apenas uma geracao pesada ocorre por vez; outras permanecem na fila FIFO.
-- Ha cancelamento cooperativo entre unidades. Nao ha estimativa de duracao, retry automatico ou regeneracao individual.
+- Ha cancelamento cooperativo, runaway retry e regeneracao individual para geracoes novas com WAVs por unidade.
 - Jobs sao mantidos somente em memoria e nao ha historico ou biblioteca.
 - A interface nao restaura posicao de leitura, nao oferece atalhos, anterior/proxima frase ou exportacao WAV.
 - Algumas siglas tecnicas, como `SYN`, `SYN-ACK`, `ACK`, `HTTPS` e `TLS`, podem exigir avaliacao pontual. O projeto nao aplica um grande dicionario fonetico.

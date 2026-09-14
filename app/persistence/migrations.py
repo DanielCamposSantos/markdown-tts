@@ -70,6 +70,53 @@ MIGRATIONS: tuple[tuple[int, str], ...] = (
             ON generation_jobs(status, queue_sequence);
         """,
     ),
+    (
+        3,
+        """
+        CREATE TABLE IF NOT EXISTS playback_state (
+            generation_id TEXT PRIMARY KEY
+                REFERENCES generations(generation_id) ON DELETE CASCADE,
+            position_seconds REAL NOT NULL DEFAULT 0
+                CHECK (position_seconds >= 0),
+            active_unit_id INTEGER,
+            playback_rate REAL NOT NULL DEFAULT 1
+                CHECK (playback_rate IN (0.75, 1, 1.25, 1.5, 1.75, 2)),
+            updated_at TEXT NOT NULL
+        );
+        """,
+    ),
+    (
+        4,
+        """
+        ALTER TABLE generations ADD COLUMN artifact_revision INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE generation_jobs RENAME TO generation_jobs_v3;
+        CREATE TABLE generation_jobs (
+            queue_sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id TEXT NOT NULL UNIQUE,
+            generation_id TEXT NOT NULL REFERENCES generations(generation_id),
+            document_id TEXT NOT NULL REFERENCES documents(document_id),
+            operation TEXT NOT NULL DEFAULT 'generate' CHECK (operation IN ('generate', 'regenerate_unit')),
+            unit_id INTEGER,
+            status TEXT NOT NULL CHECK (status IN ('queued','running','cancelling','cancelled','completed','failed','interrupted')),
+            created_at TEXT NOT NULL, updated_at TEXT NOT NULL, started_at TEXT,
+            completed_at TEXT, heartbeat_at TEXT, error TEXT,
+            progress REAL NOT NULL DEFAULT 0, phase TEXT NOT NULL DEFAULT 'queued',
+            current INTEGER NOT NULL DEFAULT 0, total INTEGER NOT NULL DEFAULT 0,
+            message TEXT NOT NULL DEFAULT ''
+        );
+        INSERT INTO generation_jobs
+            (queue_sequence,job_id,generation_id,document_id,status,created_at,updated_at,started_at,completed_at,heartbeat_at,error,progress,phase,current,total,message)
+            SELECT queue_sequence,job_id,generation_id,document_id,status,created_at,updated_at,started_at,completed_at,heartbeat_at,error,progress,phase,current,total,message FROM generation_jobs_v3;
+        DROP TABLE generation_jobs_v3;
+        CREATE INDEX generation_jobs_fifo ON generation_jobs(status, queue_sequence);
+        CREATE TABLE unit_regenerations (
+            regeneration_id TEXT PRIMARY KEY, job_id TEXT NOT NULL UNIQUE REFERENCES generation_jobs(job_id),
+            generation_id TEXT NOT NULL REFERENCES generations(generation_id) ON DELETE CASCADE,
+            unit_id INTEGER NOT NULL, previous_revision INTEGER NOT NULL, new_revision INTEGER NOT NULL,
+            status TEXT NOT NULL, created_at TEXT NOT NULL, completed_at TEXT, error TEXT
+        );
+        """,
+    ),
 )
 
 

@@ -41,10 +41,10 @@ def test_database_migration_v1_is_idempotent_and_reopens(tmp_path):
     database = Database(tmp_path / "data" / "library.db")
     database.initialize()
     database.initialize()
-    assert database.schema_version == 2
+    assert database.schema_version == 4
     reopened = Database(database.path)
     reopened.initialize()
-    assert reopened.schema_version == 2
+    assert reopened.schema_version == 4
     with reopened.connect() as connection:
         assert connection.execute("PRAGMA foreign_keys").fetchone()[0] == 1
         assert connection.execute("SELECT COUNT(*) FROM documents").fetchone()[0] == 0
@@ -101,7 +101,7 @@ def test_completed_generation_metadata_round_trip_and_restart(library):
     metadata = reopened.metadata(stored)
     assert stored.status == "completed"
     assert reopened.resolve(stored.audio_path).read_bytes() == b"fake mp3 bytes"
-    assert metadata["schema_version"] == 1
+    assert metadata["schema_version"] == 2
     assert metadata["document_id"] == document.document_id
     assert metadata["timeline"][0]["text"] == "O HTTPS utiliza TLS."
     assert metadata["units"][0]["synthesis_text"] == "O HTTPS utiliza TLS."

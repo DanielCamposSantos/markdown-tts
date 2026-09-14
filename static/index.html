@@ -70,6 +70,13 @@
             placeholder="Nome do arquivo"
         >
 
+        <div class="library-row">
+            <select id="generationSelect" aria-label="Geração concluída">
+                <option value="">Abrir geração da biblioteca...</option>
+            </select>
+            <button id="openGenerationButton" type="button" title="Abrir geração selecionada" disabled>Abrir</button>
+        </div>
+
 
         <textarea
             id="markdownInput"
@@ -178,13 +185,13 @@ O texto será dividido em frases mantendo títulos, parágrafos e listas."
         ></audio>
 
 
-        <button
-            id="playButton"
-            class="round-button"
-            aria-label="Reproduzir"
-        >
-            ▶
-        </button>
+        <div class="transport-controls" aria-label="Controles de reprodução">
+            <button id="previousButton" class="transport-button" type="button" aria-label="Unidade anterior" title="Unidade anterior (Ctrl+Seta esquerda)" disabled>Anterior</button>
+            <button id="rewindButton" class="transport-button" type="button" aria-label="Voltar 10 segundos" title="Voltar 10 segundos (Seta esquerda)" disabled>-10s</button>
+            <button id="playButton" class="round-button" type="button" aria-label="Reproduzir" title="Reproduzir ou pausar (Espaço)">▶</button>
+            <button id="forwardButton" class="transport-button" type="button" aria-label="Avançar 10 segundos" title="Avançar 10 segundos (Seta direita)" disabled>+10s</button>
+            <button id="nextButton" class="transport-button" type="button" aria-label="Próxima unidade" title="Próxima unidade (Ctrl+Seta direita)" disabled>Próxima</button>
+        </div>
 
 
         <div class="player-center">
@@ -212,6 +219,7 @@ O texto será dividido em frases mantendo títulos, parágrafos e listas."
         </div>
 
 
+        <label class="speed-control">Velocidade
         <select
             id="speedSelect"
             class="speed-select"
@@ -241,6 +249,7 @@ O texto será dividido em frases mantendo títulos, parágrafos e listas."
                 2x
             </option>
         </select>
+        </label>
 
 
         <a
