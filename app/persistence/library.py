@@ -191,6 +191,8 @@ class LibraryStore:
                 "direct_tts_per_unit": True,
             },
         }
+        if result.asr_validation is not None:
+            metadata["asr_validation"] = result.asr_validation
         self._atomic_text(metadata_path, json.dumps(metadata, ensure_ascii=False, indent=2))
         json.loads(metadata_path.read_text(encoding="utf-8"))
         self.generations.complete(

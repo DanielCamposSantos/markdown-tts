@@ -3,6 +3,7 @@ from __future__ import annotations
 import gc
 import random
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
@@ -48,6 +49,12 @@ ProgressCallback = Callable[
     [str, int, int, str],
     None,
 ]
+
+
+@dataclass(frozen=True)
+class UnitGenerationResult:
+    generation_seconds: float
+    decode_seconds: float
 
 
 def cleanup_cuda() -> None:
@@ -383,6 +390,65 @@ class MossEngine:
         raise RuntimeError(
             "MOSS não retornou áudio."
         )
+
+    def generate_units(
+        self,
+        units: list[SpeechUnit],
+        *,
+        progress_callback: ProgressCallback | None = None,
+        should_cancel: Callable[[], bool] | None = None,
+        unit_output_dir: Path,
+        seed_offset: int = 0,
+    ) -> UnitGenerationResult:
+        """Generate/decode independent unit WAVs without assembly or export."""
+        if not units:
+            raise ValueError("Speech Plan vazio.")
+        if self.model is None:
+            raise RuntimeError("Modelo MOSS não carregado.")
+        total = len(units)
+        model = self.model.to("cuda:0")
+        self.model = model
+        model.eval()
+        generated_outputs = []
+        generation_start = time.perf_counter()
+        try:
+            for position, unit in enumerate(units, start=1):
+                if should_cancel and should_cancel():
+                    raise GenerationCancelled("Geração cancelada.")
+                if progress_callback:
+                    progress_callback("generation", position, total, f"Gerando frase {position} de {total}")
+                output = generate_with_runaway_guard(
+                    unit=unit,
+                    generate_attempt=lambda seed, current=unit: self._generate_unit(model, current, seed=seed),
+                    audio_pad_token_id=int(self.processor.model_config.audio_pad_token_id),
+                    first_seed=BASE_SEED + unit.index + seed_offset,
+                    should_cancel=should_cancel,
+                )
+                generated_outputs.append((unit, output))
+        finally:
+            self.model = model.to("cpu")
+            cleanup_cuda()
+        generation_seconds = time.perf_counter() - generation_start
+        if progress_callback:
+            progress_callback("decode", 0, total, "Preparando decoder...")
+        self.processor.audio_tokenizer = self.processor.audio_tokenizer.to("cuda:0")
+        decode_start = time.perf_counter()
+        try:
+            for position, (unit, output) in enumerate(generated_outputs, start=1):
+                if should_cancel and should_cancel():
+                    raise GenerationCancelled("Geração cancelada.")
+                if progress_callback:
+                    progress_callback("decode", position, total, f"Decodificando {position} de {total}")
+                audio = self._decode_output(output)
+                write_unit_wav(
+                    audio,
+                    int(self.processor.model_config.sampling_rate),
+                    unit_output_dir / f"{unit.index:06d}.wav",
+                )
+        finally:
+            self.processor.audio_tokenizer = self.processor.audio_tokenizer.to("cpu")
+            cleanup_cuda()
+        return UnitGenerationResult(generation_seconds, time.perf_counter() - decode_start)
 
     def generate(
         self,

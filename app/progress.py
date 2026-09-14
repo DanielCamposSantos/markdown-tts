@@ -41,6 +41,7 @@ class ProgressPhase(str, Enum):
     MODEL_LOADING = "model_loading"
     GENERATION = "generation"
     DECODE = "decode"
+    ASR_VALIDATION = "asr_validation"
     ASSEMBLE = "assemble"
     EXPORT = "export"
     PUBLISH = "publish"
@@ -56,10 +57,11 @@ PHASE_RANGES: dict[ProgressPhase, tuple[float, float]] = {
     ProgressPhase.PREPARING: (1.0, 4.0),
     ProgressPhase.MODEL_LOADING: (4.0, 12.0),
     ProgressPhase.GENERATION: (12.0, 68.0),
-    ProgressPhase.DECODE: (68.0, 84.0),
-    ProgressPhase.ASSEMBLE: (84.0, 90.0),
-    ProgressPhase.EXPORT: (90.0, 96.0),
-    ProgressPhase.PUBLISH: (96.0, 99.0),
+    ProgressPhase.DECODE: (68.0, 80.0),
+    ProgressPhase.ASR_VALIDATION: (80.0, 90.0),
+    ProgressPhase.ASSEMBLE: (90.0, 93.0),
+    ProgressPhase.EXPORT: (93.0, 97.0),
+    ProgressPhase.PUBLISH: (97.0, 99.0),
     ProgressPhase.COMPLETED: (100.0, 100.0),
     ProgressPhase.FAILED: (0.0, 99.0),
     ProgressPhase.CANCELLING: (0.0, 99.0),
@@ -72,6 +74,7 @@ ENGINE_PHASES = {
     "model_loading": ProgressPhase.MODEL_LOADING,
     "generation": ProgressPhase.GENERATION,
     "decode": ProgressPhase.DECODE,
+    "asr_validation": ProgressPhase.ASR_VALIDATION,
     "assemble": ProgressPhase.ASSEMBLE,
     "export": ProgressPhase.EXPORT,
     "publish": ProgressPhase.PUBLISH,
@@ -83,7 +86,7 @@ def phase_percentage(phase: ProgressPhase, current: int = 0, total: int = 0) -> 
     if phase is ProgressPhase.GENERATION:
         completed = max(0, min(total, current - 1))
         ratio = completed / max(total, 1)
-    elif phase is ProgressPhase.DECODE:
+    elif phase in {ProgressPhase.DECODE, ProgressPhase.ASR_VALIDATION}:
         completed = max(0, min(total, current - 1))
         ratio = completed / max(total, 1)
     elif phase in {ProgressPhase.ASSEMBLE, ProgressPhase.EXPORT, ProgressPhase.PUBLISH}:

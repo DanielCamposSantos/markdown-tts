@@ -116,6 +116,12 @@ class ModelManager:
             return engine
 
     def generate(self, *args, **kwargs):
+        return self._invoke("generate", *args, **kwargs)
+
+    def generate_units(self, *args, **kwargs):
+        return self._invoke("generate_units", *args, **kwargs)
+
+    def _invoke(self, method: str, *args, **kwargs):
         with self._generation_lock:
             engine = self.ensure_loaded()
             with self._condition:
@@ -123,7 +129,7 @@ class ModelManager:
                     raise RuntimeError("ModelManager is not ready")
                 self._transition_locked(ModelState.GENERATING)
             try:
-                result = engine.generate(*args, **kwargs)
+                result = getattr(engine, method)(*args, **kwargs)
             except GenerationCancelled:
                 with self._condition:
                     self._last_used = self._clock()
@@ -177,6 +183,7 @@ class ModelManager:
                 self._transition_locked(ModelState.ERROR)
             raise
         with self._condition:
+            self._engine = None
             self._last_used = None
             self._transition_locked(ModelState.UNLOADED)
 

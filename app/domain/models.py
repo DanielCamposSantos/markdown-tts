@@ -64,6 +64,7 @@ class GenerationResult:
     generation_seconds: float
     decode_seconds: float
     timeline: tuple[TimelineEntry, ...]
+    asr_validation: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)

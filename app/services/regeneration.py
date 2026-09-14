@@ -10,6 +10,9 @@ from app.audio_io import combine_audio, export_mp3, read_unit_wav
 from app.persistence.library import LibraryStore, utc_now
 from app.playback import active_unit_at, unit_id
 from app.speech_plan import SpeechUnit
+from app.config import ASR_VALIDATION_ENABLED
+from app.services.asr_validation import AsrValidationCoordinator
+from app.validation.manager import AsrManager
 
 
 MANUAL_REGENERATION_SEED_OFFSET = 100_000
@@ -19,9 +22,27 @@ class RegenerationUnavailableError(RuntimeError):
     pass
 
 
+def merge_asr_metadata(previous: dict | None, current: dict) -> dict:
+    if not previous or not previous.get("enabled"):
+        return current
+    merged = dict(current)
+    units = {**previous.get("units", {}), **current.get("units", {})}
+    regenerated = set(previous.get("summary", {}).get("auto_regenerated_units", []))
+    regenerated.update(current.get("summary", {}).get("auto_regenerated_units", []))
+    counts = {
+        status: sum(item.get("status") == status for item in units.values())
+        for status in ("pass", "warn", "fail")
+    }
+    merged["units"] = units
+    merged["summary"] = {**counts, "auto_regenerated_units": sorted(regenerated)}
+    return merged
+
+
 class RegenerationService:
-    def __init__(self, engine) -> None:
+    def __init__(self, engine, *, asr_manager: AsrManager | None = None, asr_enabled: bool = ASR_VALIDATION_ENABLED) -> None:
         self.engine = engine
+        self.asr_manager = asr_manager
+        self.asr_enabled = asr_enabled
 
     def regenerate(
         self,
@@ -62,13 +83,31 @@ class RegenerationService:
                 if progress_callback is not None and phase not in {"assemble", "export"}:
                     progress_callback(phase, current, total, message)
 
-            self.engine.generate(
-                [unit], one_unit_mp3,
-                progress_callback=engine_progress if progress_callback is not None else None,
-                should_cancel=should_cancel,
-                unit_output_dir=unit_stage,
-                seed_offset=(new_revision - 1) * MANUAL_REGENERATION_SEED_OFFSET,
-            )
+            asr_metadata = None
+            if self.asr_enabled:
+                manager = self.asr_manager or AsrManager()
+                manager.preflight()
+                self.engine.generate_units(
+                    [unit],
+                    progress_callback=engine_progress if progress_callback is not None else None,
+                    should_cancel=should_cancel,
+                    unit_output_dir=unit_stage,
+                    seed_offset=(new_revision - 1) * MANUAL_REGENERATION_SEED_OFFSET,
+                )
+                outcome = AsrValidationCoordinator(manager).validate_and_correct(
+                    [unit], unit_stage, self.engine,
+                    progress_callback=engine_progress if progress_callback is not None else None,
+                    should_cancel=should_cancel,
+                )
+                asr_metadata = outcome.metadata
+            else:
+                self.engine.generate(
+                    [unit], one_unit_mp3,
+                    progress_callback=engine_progress if progress_callback is not None else None,
+                    should_cancel=should_cancel,
+                    unit_output_dir=unit_stage,
+                    seed_offset=(new_revision - 1) * MANUAL_REGENERATION_SEED_OFFSET,
+                )
             new_unit_stage = unit_stage / f"{unit_id_value:06d}.wav"
             if not new_unit_stage.is_file() or new_unit_stage.stat().st_size == 0:
                 raise RuntimeError("Novo artefato de unidade ausente")
@@ -104,6 +143,8 @@ class RegenerationService:
                 "unit_artifacts": revised_artifacts,
                 "timeline": [entry.to_dict() for entry in timeline],
             })
+            if asr_metadata is not None:
+                revised["asr_validation"] = merge_asr_metadata(metadata.get("asr_validation"), asr_metadata)
             staged_metadata = staging / final_metadata.name
             staged_metadata.write_text(json.dumps(revised, ensure_ascii=False, indent=2), encoding="utf-8")
             json.loads(staged_metadata.read_text(encoding="utf-8"))

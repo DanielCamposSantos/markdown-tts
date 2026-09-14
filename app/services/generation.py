@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import inspect
 import shutil
+import tempfile
 from typing import Any, Callable, Protocol
 
 from app.domain.models import GenerationProgress, GenerationResult
@@ -10,6 +11,10 @@ from app.audio_generation_guard import GenerationCancelled
 from app.markdown_parser import parse_markdown
 from app.speech_plan import SpeechUnit, build_speech_plan
 from app.progress import ENGINE_PHASES, phase_percentage
+from app.audio_io import combine_audio, export_mp3, read_unit_wav
+from app.config import ASR_VALIDATION_ENABLED
+from app.validation.manager import AsrManager
+from app.services.asr_validation import AsrValidationCoordinator
 
 
 ProgressCallback = Callable[[GenerationProgress], None]
@@ -27,6 +32,8 @@ class TtsEngine(Protocol):
         unit_output_dir: Path | None = None,
         seed_offset: int = 0,
     ) -> GenerationResult: ...
+    def generate_units(self, units, **kwargs): ...
+    def unload(self) -> None: ...
 
 
 class GenerationStore(Protocol):
@@ -39,12 +46,25 @@ class GenerationStore(Protocol):
 
 
 class GenerationService:
-    def __init__(self, engine: TtsEngine) -> None:
+    def __init__(
+        self, engine: TtsEngine, *, asr_manager: AsrManager | None = None,
+        asr_enabled: bool = ASR_VALIDATION_ENABLED,
+    ) -> None:
         self._engine = engine
+        self._asr_enabled = asr_enabled
+        self._asr_manager = asr_manager
 
     @property
     def engine(self) -> TtsEngine:
         return self._engine
+
+    @property
+    def asr_enabled(self) -> bool:
+        return self._asr_enabled
+
+    @property
+    def asr_manager(self) -> AsrManager | None:
+        return self._asr_manager
 
     def generate(
         self,
@@ -84,6 +104,20 @@ class GenerationService:
                     )
                 )
 
+        if self._asr_enabled:
+            manager = self._asr_manager or AsrManager()
+            manager.preflight()
+            if unit_output_dir is None:
+                with tempfile.TemporaryDirectory(prefix="markdown_tts_asr_") as temporary:
+                    return self._generate_validated(
+                        plan, output_file, Path(temporary), manager, report_progress,
+                        should_cancel, seed_offset,
+                    )
+            return self._generate_validated(
+                plan, output_file, unit_output_dir, manager, report_progress,
+                should_cancel, seed_offset,
+            )
+
         arguments = {
             "units": plan,
             "output_file": output_file,
@@ -96,6 +130,46 @@ class GenerationService:
         if seed_offset:
             arguments["seed_offset"] = seed_offset
         return self._engine.generate(**arguments)
+
+    def _generate_validated(
+        self, plan, output_file, unit_output_dir, manager, report_progress,
+        should_cancel, seed_offset,
+    ) -> GenerationResult:
+        unit_output_dir.mkdir(parents=True, exist_ok=True)
+        initial = self._engine.generate_units(
+            plan,
+            progress_callback=report_progress,
+            should_cancel=should_cancel,
+            unit_output_dir=unit_output_dir,
+            seed_offset=seed_offset,
+        )
+        outcome = AsrValidationCoordinator(manager).validate_and_correct(
+            plan, unit_output_dir, self._engine,
+            progress_callback=report_progress,
+            should_cancel=should_cancel,
+        )
+        if should_cancel and should_cancel():
+            raise GenerationCancelled("Geração cancelada.")
+        report_progress("assemble", len(plan), len(plan), "Montando áudio...")
+        decoded = []
+        sample_rate = None
+        for unit in plan:
+            audio, rate = read_unit_wav(unit_output_dir / f"{unit.index:06d}.wav")
+            if sample_rate is not None and rate != sample_rate:
+                raise RuntimeError("Sample rates incompatíveis")
+            sample_rate = rate
+            decoded.append((unit.index, unit.kind, unit.display_text, unit.pause_after_ms, audio))
+        master, timeline = combine_audio(decoded, int(sample_rate))
+        if should_cancel and should_cancel():
+            raise GenerationCancelled("Geração cancelada.")
+        report_progress("export", len(plan), len(plan), "Criando MP3...")
+        export_mp3(master, int(sample_rate), output_file)
+        return GenerationResult(
+            output_file.resolve(), master.shape[-1] / int(sample_rate),
+            initial.generation_seconds + outcome.generation_seconds,
+            initial.decode_seconds + outcome.decode_seconds,
+            tuple(timeline), outcome.metadata,
+        )
 
     def generate_persisted(
         self,
@@ -119,7 +193,7 @@ class GenerationService:
         store.mark_running(generation.generation_id)
         try:
             unit_staging = staging_file.parent / ".units.staging"
-            supports_artifacts = any(
+            supports_artifacts = self._asr_enabled or any(
                 parameter.kind is inspect.Parameter.VAR_KEYWORD or name == "unit_output_dir"
                 for name, parameter in inspect.signature(self._engine.generate).parameters.items()
             )

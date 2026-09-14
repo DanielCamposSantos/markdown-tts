@@ -41,6 +41,7 @@ def test_initial_load_generate_release_unload_and_shutdown():
     assert manager.state is ModelState.READY
     manager.unload()
     assert manager.state is ModelState.UNLOADED
+    assert manager._engine is None
     manager.shutdown()
     with pytest.raises(RuntimeError, match="shut down"):
         manager.ensure_loaded()

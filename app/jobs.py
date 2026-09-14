@@ -265,7 +265,11 @@ class JobWorker:
                     )
                 service = self.service_factory()
                 self._report_model_loading_if_needed(service, tracker)
-                RegenerationService(service.engine).regenerate(
+                RegenerationService(
+                    service.engine,
+                    asr_manager=service.asr_manager,
+                    asr_enabled=service.asr_enabled,
+                ).regenerate(
                     self.library, job.generation_id, int(job.unit_id), job.job_id,
                     progress_callback=tracker.report,
                     should_cancel=lambda: self.repository.get(job.job_id).status == "cancelling",

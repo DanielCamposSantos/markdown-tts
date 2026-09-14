@@ -152,6 +152,7 @@ function setProgress(progress, message) {
 }
 
 const phaseLabels = {
+    asr_validation: "Validação ASR",
     queued: "Na fila", preparing: "Preparando", model_loading: "Carregando modelo",
     generation: "Geração", decode: "Decodificação", assemble: "Montagem",
     export: "Exportação", publish: "Publicação", completed: "Concluído",

@@ -30,7 +30,7 @@ def units(*texts):
 def test_canonical_phase_contract_and_ranges():
     assert [phase.value for phase in ProgressPhase] == [
         "queued", "preparing", "model_loading", "generation", "decode",
-        "assemble", "export", "publish", "completed", "failed",
+        "asr_validation", "assemble", "export", "publish", "completed", "failed",
         "cancelling", "cancelled", "interrupted",
     ]
     assert PHASE_RANGES[ProgressPhase.COMPLETED] == (100.0, 100.0)
@@ -51,6 +51,7 @@ def test_full_pipeline_is_monotonic_and_completed_is_100():
         ("generation", 1, 3), ("generation", 2, 3),
         ("generation", 3, 3), ("decode", 0, 3),
         ("decode", 1, 3), ("decode", 3, 3),
+        ("asr_validation", 1, 3), ("asr_validation", 3, 3),
         ("assemble", 3, 3), ("export", 3, 3),
         ("publish", 3, 3), ("completed", 3, 3),
     ]:
@@ -58,6 +59,18 @@ def test_full_pipeline_is_monotonic_and_completed_is_100():
     values = [event.progress for event in events]
     assert values == sorted(values)
     assert events[-1].progress == 100
+
+
+def test_asr_correction_loop_is_monotonic_and_has_no_eta():
+    events = []
+    tracker = ProgressTracker(events.append)
+    tracker.report("decode", 3, 3, "decoded")
+    tracker.report("asr_validation", 1, 3, "validating")
+    tracker.report("model_loading", 0, 1, "correcting")
+    tracker.report("generation", 1, 1, "corrective")
+    tracker.report("asr_validation", 1, 1, "revalidating")
+    assert [event.progress for event in events] == sorted(event.progress for event in events)
+    assert events[-1].eta_seconds is None
 
 
 def test_retry_keeps_unit_and_does_not_regress():

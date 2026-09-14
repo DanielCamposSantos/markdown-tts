@@ -73,6 +73,19 @@ ASR ou retry automático está conectado ao pipeline. O corpus neutro em
 `benchmarks/corpus-pt-br.json` permite comparar candidatos posteriormente sem
 usar documentos privados.
 
+### Validação ASR opt-in
+
+A integração Faster-Whisper permanece desativada por padrão. Para um teste local,
+inicie um novo processo com `MARKDOWN_TTS_ASR_VALIDATION=1`; o modelo precisa
+existir em `benchmarks/models/faster-whisper-medium` (ou no caminho indicado por
+`MARKDOWN_TTS_ASR_MODEL_PATH`). A configuração congelada é CUDA,
+`int8_float16`, português, beam 5, batch unitário e sem VAD.
+
+Quando habilitada, a geração persiste os WAVs de unidade, descarrega efetivamente
+o MOSS, valida serialmente e aceita `PASS`/`WARN`. Unidades `FAIL` são corrigidas
+em lote por no máximo duas rodadas antes da montagem e publicação. O ASR nunca é
+carregado junto com o MOSS na GPU.
+
 ## Requisitos
 
 ### Hardware validado

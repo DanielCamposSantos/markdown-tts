@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 
@@ -50,3 +51,15 @@ BASE_SEED = 8300
 MP3_BITRATE = "192k"
 
 MODEL_IDLE_TIMEOUT_SECONDS = 300.0
+
+ASR_VALIDATION_ENABLED = os.environ.get("MARKDOWN_TTS_ASR_VALIDATION", "0") == "1"
+ASR_BACKEND = "faster-whisper"
+ASR_MODEL_PATH = Path(os.environ.get(
+    "MARKDOWN_TTS_ASR_MODEL_PATH",
+    str(ROOT / "benchmarks" / "models" / "faster-whisper-medium"),
+))
+ASR_COMPUTE_TYPE = "int8_float16"
+ASR_LANGUAGE = "pt"
+ASR_BEAM_SIZE = 5
+ASR_MAX_AUTO_REGENERATION_ROUNDS = 2
+ASR_AUTO_REGENERATION_SEED_OFFSET = 1_000_001

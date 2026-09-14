@@ -14,8 +14,11 @@ from app.persistence.database import Database
 from app.persistence.migrations import MIGRATIONS
 from app.persistence.library import utc_now
 from app.services.generation import GenerationService
-from app.services.regeneration import MANUAL_REGENERATION_SEED_OFFSET, RegenerationService
-from app.config import SAMPLE_RATE
+from app.services.regeneration import MANUAL_REGENERATION_SEED_OFFSET, RegenerationService, merge_asr_metadata
+from app.config import ASR_AUTO_REGENERATION_SEED_OFFSET, SAMPLE_RATE
+from app.validation.asr import AsrResult, FakeAsrEngine
+from app.validation.manager import AsrManager
+from app.services.asr_validation import AsrValidationFailedError
 
 
 class ArtifactEngine:
@@ -44,6 +47,18 @@ class ArtifactEngine:
         output_file.parent.mkdir(parents=True, exist_ok=True)
         output_file.write_bytes(b"mp3")
         return GenerationResult(output_file, master.shape[-1] / SAMPLE_RATE, 0.1, 0.1, tuple(timeline))
+
+    def generate_units(self, units, progress_callback=None, should_cancel=None, unit_output_dir=None, seed_offset=0):
+        self.calls.append(([unit.index for unit in units], seed_offset))
+        if should_cancel and should_cancel():
+            from app.audio_generation_guard import GenerationCancelled
+            raise GenerationCancelled("cancelled")
+        for unit in units:
+            write_unit_wav(torch.full((1, self.target_samples), float(unit.index)), SAMPLE_RATE, unit_output_dir / f"{unit.index:06d}.wav")
+        return type("Timing", (), {"generation_seconds": 0.1, "decode_seconds": 0.1})()
+
+    def unload(self):
+        pass
 
 
 def capable_generation(tmp_path):
@@ -138,6 +153,87 @@ def test_regeneration_failure_keeps_old_revision_authoritative(tmp_path, monkeyp
     with pytest.raises(RuntimeError, match="tts failed"):
         RegenerationService(engine).regenerate(library, generation.generation_id, 1, job.job_id)
     assert library.generations.get(generation.generation_id) == old
+
+
+def test_asr_validated_manual_regeneration_publishes_metadata(tmp_path, monkeypatch):
+    library, _, generation, _ = capable_generation(tmp_path)
+    job = JobRepository(library.database).enqueue_regeneration(generation.generation_id, generation.document_id, 1, 1)
+    model = tmp_path / "model"; model.mkdir()
+    manager = AsrManager(
+        lambda: FakeAsrEngine(default=AsrResult("Um.", backend="fake")), model_path=model
+    )
+    monkeypatch.setattr(regeneration_module, "export_mp3", lambda audio, rate, path: path.write_bytes(b"new"))
+    revision = RegenerationService(
+        ArtifactEngine(), asr_manager=manager, asr_enabled=True,
+    ).regenerate(library, generation.generation_id, 1, job.job_id)
+    metadata = library.metadata(library.generations.get(generation.generation_id))
+    assert revision == 2
+    assert metadata["asr_validation"]["units"]["1"]["status"] == "pass"
+
+
+def test_manual_regeneration_accepts_asr_warning(tmp_path, monkeypatch):
+    library, _, generation, _ = capable_generation(tmp_path)
+    job = JobRepository(library.database).enqueue_regeneration(generation.generation_id, generation.document_id, 1, 1)
+    model = tmp_path / "model"; model.mkdir()
+    manager = AsrManager(
+        lambda: FakeAsrEngine(default=AsrResult("Um.", backend="fake", confidence=0.2)), model_path=model
+    )
+    monkeypatch.setattr(regeneration_module, "export_mp3", lambda audio, rate, path: path.write_bytes(b"new"))
+    RegenerationService(
+        ArtifactEngine(), asr_manager=manager, asr_enabled=True,
+    ).regenerate(library, generation.generation_id, 1, job.job_id)
+    metadata = library.metadata(library.generations.get(generation.generation_id))
+    assert metadata["asr_validation"]["units"]["1"]["status"] == "warn"
+
+
+def test_manual_regeneration_asr_fail_then_retry_resolves(tmp_path, monkeypatch):
+    library, _, generation, _ = capable_generation(tmp_path)
+    job = JobRepository(library.database).enqueue_regeneration(generation.generation_id, generation.document_id, 1, 1)
+    model = tmp_path / "model"; model.mkdir()
+    values = iter(("ruído", "Um."))
+    backend = FakeAsrEngine(callback=lambda path, language: AsrResult(next(values), backend="fake"))
+    manager = AsrManager(lambda: backend, model_path=model)
+    monkeypatch.setattr(regeneration_module, "export_mp3", lambda audio, rate, path: path.write_bytes(b"new"))
+    engine = ArtifactEngine()
+    RegenerationService(
+        engine, asr_manager=manager, asr_enabled=True,
+    ).regenerate(library, generation.generation_id, 1, job.job_id)
+    metadata = library.metadata(library.generations.get(generation.generation_id))
+    assert engine.calls == [
+        ([1], MANUAL_REGENERATION_SEED_OFFSET),
+        ([1], ASR_AUTO_REGENERATION_SEED_OFFSET),
+    ]
+    assert metadata["asr_validation"]["units"]["1"]["auto_regeneration_rounds"] == 1
+
+
+def test_persistent_asr_failure_rolls_back_manual_regeneration(tmp_path):
+    library, _, generation, _ = capable_generation(tmp_path)
+    old = library.generations.get(generation.generation_id)
+    job = JobRepository(library.database).enqueue_regeneration(generation.generation_id, generation.document_id, 1, 1)
+    model = tmp_path / "model"; model.mkdir()
+    manager = AsrManager(
+        lambda: FakeAsrEngine(default=AsrResult("ruído", backend="fake")), model_path=model
+    )
+    with pytest.raises(AsrValidationFailedError):
+        RegenerationService(
+            ArtifactEngine(), asr_manager=manager, asr_enabled=True,
+        ).regenerate(library, generation.generation_id, 1, job.job_id)
+    assert library.generations.get(generation.generation_id) == old
+
+
+def test_manual_regeneration_merges_validation_with_previous_units():
+    previous = {
+        "enabled": True,
+        "summary": {"pass": 1, "warn": 1, "fail": 0, "auto_regenerated_units": [2]},
+        "units": {"1": {"status": "pass"}, "2": {"status": "warn"}},
+    }
+    current = {
+        "enabled": True,
+        "summary": {"pass": 1, "warn": 0, "fail": 0, "auto_regenerated_units": []},
+        "units": {"2": {"status": "pass"}},
+    }
+    merged = merge_asr_metadata(previous, current)
+    assert merged["summary"] == {"pass": 2, "warn": 0, "fail": 0, "auto_regenerated_units": [2]}
 
 
 @pytest.mark.parametrize("failure_point", ["unit", "assemble", "export", "metadata", "commit"])

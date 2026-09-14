@@ -107,6 +107,7 @@ def test_completed_generation_metadata_round_trip_and_restart(library):
     assert metadata["units"][0]["synthesis_text"] == "O HTTPS utiliza TLS."
     assert metadata["audio"]["mp3_path"] == stored.audio_path
     assert metadata["voice"]["sha256"] == file_sha256(library.voice_reference)
+    assert "asr_validation" not in metadata
     assert str(library.root) not in json.dumps(metadata)
     assert audio.is_file()
 

@@ -7,9 +7,10 @@ from pathlib import Path
 import sys
 import time
 from typing import Callable, Mapping, Protocol
+from app.config import ASR_VALIDATION_ENABLED
 
 
-ASR_ENABLED = False
+ASR_ENABLED = ASR_VALIDATION_ENABLED
 
 
 @dataclass(frozen=True)

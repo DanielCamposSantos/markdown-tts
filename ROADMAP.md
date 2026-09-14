@@ -249,10 +249,10 @@ frontend continua usando polling e mostra a posicao FIFO quando aplicavel.
 
 ## Fase 9 - ASR local e validacao seletiva
 
-**Status parcial:** Fase 9A concluida somente para infraestrutura. Existem
-`AsrEngine`, fake/disabled, normalizacao, scoring explicavel, validator e harness
-com corpus neutro. A Fase 9B — benchmark real, escolha de backend/modelo e
-integracao opt-in — permanece pendente; nenhum ASR real integra a geracao.
+**Status:** Fases 9A/9B concluidas e integração 9C implementada em modo opt-in.
+Faster-Whisper medium `int8_float16` foi escolhido no benchmark. A validação e
+as duas rodadas máximas de correção seletiva estão integradas à geração e à
+regeneração manual, mas permanecem desativadas por padrão até smoke test manual.
 
 **Objetivo:** detectar omissoes, truncamentos e audio anormal localmente.
 

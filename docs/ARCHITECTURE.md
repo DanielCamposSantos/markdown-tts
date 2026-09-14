@@ -225,6 +225,33 @@ integração com a geração normal.
 
 Normalizacao pode uniformizar case, acentos, espacos e pontuacao, mas deve preservar palavras relevantes, numeros, siglas e tokens tecnicos. Similaridade de caracteres isolada nao basta: combinar cobertura de tokens, alinhamento aproximado e regras para truncamento/audio vazio. Thresholds devem ser configuraveis, explicaveis e limitados para evitar loops de regeneracao.
 
+### Integração ASR opt-in
+
+`ASR_VALIDATION_ENABLED` permanece falso por padrão. Quando habilitado, o fluxo
+persistido é:
+
+`MOSS gera/decode WAVs -> ModelManager.unload -> AsrManager.load -> validação em lote -> AsrManager.unload -> correção MOSS em lote (se necessária) -> revalidação -> assemble/export/publish`.
+
+`AsrManager` possui lifecycle separado. O unload explícito do `ModelManager`
+descarta também a instância `MossEngine`, liberando processor/tokenizer da RAM;
+startup lazy e idle unload continuam válidos. Cancelamento e erros liberam ambos
+os managers em `finally`.
+
+Há no máximo duas rodadas corretivas. Seus namespaces determinísticos são
+`BASE_SEED + unit.index + 1_000_001 * round`; o resíduo evita colisão com os
+múltiplos de `100_000` da regeneração manual. Retries internos do guard ainda
+somam `10_000 * attempt`, e revisões manuais continuam em seu namespace próprio.
+`WARN` é publicado sem retry; `FAIL` persistente impede publicação. Na regeneração
+manual, a revisão anterior permanece autoritativa até WAV, ASR, montagem, MP3 e
+metadata novos estarem prontos.
+
+Metadata nova pode conter `asr_validation` com backend/configuração, resumo,
+scores, tokens divergentes, razões e rodadas por unidade. Sua ausência em
+gerações antigas significa `not_validated` e não requer migração SQLite.
+
+A fase canônica `asr_validation` ocupa 80–90% do progresso; correções preservam
+monotonicidade e a ETA fica nula fora da geração acústica.
+
 ## CURRENT: polling, progresso e ETA
 
 O polling de 500 ms consulta o ultimo estado persistido do Job. As fases reais sao
