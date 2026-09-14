@@ -214,9 +214,22 @@ Faster-Whisper e Whisper sao candidatos para benchmark, nao uma escolha nesta fa
 
 Normalizacao pode uniformizar case, acentos, espacos e pontuacao, mas deve preservar palavras relevantes, numeros, siglas e tokens tecnicos. Similaridade de caracteres isolada nao basta: combinar cobertura de tokens, alinhamento aproximado e regras para truncamento/audio vazio. Thresholds devem ser configuraveis, explicaveis e limitados para evitar loops de regeneracao.
 
-## TARGET: polling e eventos
+## CURRENT: polling, progresso e ETA
 
-Manter polling como primeira evolucao: o frontend ja o usa, o ambiente e local e o protocolo e simples de depurar. Melhorar o payload para incluir fase, unidade, contadores, mensagem, ETA opcional e erro estruturado. Considerar SSE se muitos clientes ou polling frequente se tornar problema; WebSocket nao e necessario para eventos unidirecionais e adicionaria complexidade operacional.
+O polling de 500 ms consulta o ultimo estado persistido do Job. As fases reais sao
+`queued`, `preparing`, `model_loading` quando necessario, `generation`, `decode`,
+`assemble`, `export`, `publish` e os estados terminais. Pesos deterministas tornam
+o percentual monotonicamente crescente; 100% so e gravado depois da publicacao
+atomica e da conclusao SQLite.
+
+A ETA e telemetria opcional e representa somente a geracao restante. Cada unidade
+recebe trabalho deterministico por palavras mais 2,5 palavras equivalentes por
+segundo de pausa explicita. Depois de tres unidades concluidas, calcula-se a
+mediana das ultimas cinco taxas `segundos/trabalho`, multiplicada pelo trabalho
+restante e por uma margem conservadora de 1,15. Assim, tamanhos diferentes e um
+outlier isolado sao tratados sem falsa precisao. Sem amostra suficiente, durante
+regeneracao individual e fora da geracao, `eta_seconds` e `null`. SSE e WebSocket
+nao fazem parte deste fluxo.
 
 ## CURRENT: frontend
 

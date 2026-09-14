@@ -74,7 +74,7 @@ def test_new_generation_persists_ordered_nonempty_unit_artifacts(tmp_path):
 def test_migration_v4_adds_revision_operation_and_history(tmp_path):
     voice = tmp_path / "voice.wav"; voice.write_bytes(b"voice")
     library = LibraryStore(tmp_path / "library", voice)
-    assert library.database.schema_version == 4
+    assert library.database.schema_version == 5
     with library.database.connect() as connection:
         generation_columns = {row["name"] for row in connection.execute("PRAGMA table_info(generations)")}
         job_columns = {row["name"] for row in connection.execute("PRAGMA table_info(generation_jobs)")}
@@ -102,7 +102,7 @@ def test_migration_v3_to_v4_preserves_existing_jobs(tmp_path):
         )
     database.initialize()
     database.initialize()
-    assert database.schema_version == 4
+    assert database.schema_version == 5
     with database.connect() as connection:
         row = connection.execute("SELECT * FROM generation_jobs WHERE job_id='j'").fetchone()
         assert row["operation"] == "generate" and row["generation_id"] == "g"

@@ -621,12 +621,24 @@ select {
 }
 
 
+.progress-phase {
+    display: block;
+    margin-top: 3px;
+    color: var(--muted);
+    font-size: 12px;
+}
+
 .progress-percent {
     color: var(--muted);
 
     font-size: 13px;
 }
 
+
+.cancel-job-button {
+    padding: 7px 10px;
+    font-size: 12px;
+}
 
 .progress-track {
     height: 7px;
@@ -658,6 +670,15 @@ select {
         width 280ms ease;
 }
 
+
+.progress-times {
+    display: flex;
+    justify-content: space-between;
+    gap: 18px;
+    margin-top: 9px;
+    color: var(--muted);
+    font-size: 12px;
+}
 
 .player-dock {
     position: fixed;

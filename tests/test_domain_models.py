@@ -44,6 +44,9 @@ def test_progress_and_generation_result_serialize():
         "total": 2,
         "message": "Gerando",
         "progress": 41.0,
+        "eta_seconds": None,
+        "elapsed_seconds": 0.0,
+        "phase_progress": 0.0,
     }
     assert entry.to_dict()["pause_after_ms"] == 250
     assert result.to_dict()["output_file"] == "audio.mp3"

@@ -5,6 +5,7 @@ import threading
 import unicodedata
 import webbrowser
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
@@ -508,8 +509,20 @@ def job_status(
     if job is None:
         raise HTTPException(status_code=404, detail="Geração não encontrada.")
     payload = job.to_dict()
+    now = datetime.now(timezone.utc)
+    if job.started_at:
+        started = datetime.fromisoformat(job.started_at.replace("Z", "+00:00"))
+        end = (
+            datetime.fromisoformat(job.completed_at.replace("Z", "+00:00"))
+            if job.completed_at else now
+        )
+        payload["elapsed_seconds"] = max(job.elapsed_seconds, (end - started).total_seconds())
+    if job.eta_seconds is not None and job.status == "running":
+        updated = datetime.fromisoformat(job.updated_at.replace("Z", "+00:00"))
+        payload["eta_seconds"] = max(0.0, job.eta_seconds - (now - updated).total_seconds())
     payload["id"] = job.job_id
     payload["total_units"] = job.total
+    payload["queue_position"] = JobRepository(get_library().database).queue_position(job_id)
     payload["timeline"] = []
     payload["audio_url"] = None
     generation = get_library().generations.get(job.generation_id)

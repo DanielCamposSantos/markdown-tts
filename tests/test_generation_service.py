@@ -54,7 +54,7 @@ def test_generation_service_builds_plan_and_passes_output_and_progress(tmp_path)
     assert progress[0].phase == "generation"
     assert progress[0].current == 1
     assert progress[0].total == 3
-    assert progress[0].progress == 29.0
+    assert progress[0].progress == 12.0
 
 
 def test_generation_service_rejects_markdown_without_narratable_text(tmp_path):

@@ -9,6 +9,7 @@ from app.domain.models import GenerationProgress, GenerationResult
 from app.audio_generation_guard import GenerationCancelled
 from app.markdown_parser import parse_markdown
 from app.speech_plan import SpeechUnit, build_speech_plan
+from app.progress import ENGINE_PHASES, phase_percentage
 
 
 ProgressCallback = Callable[[GenerationProgress], None]
@@ -130,6 +131,12 @@ class GenerationService:
                 should_cancel=should_cancel,
                 unit_output_dir=unit_staging if supports_artifacts else None,
             )
+            if progress_callback is not None:
+                progress_callback(GenerationProgress(
+                    phase="publish", current=len(units), total=len(units),
+                    message="Salvando geração...",
+                    progress=progress_percentage("publish", len(units), len(units)),
+                ))
             stored = store.complete(
                 document,
                 generation,
@@ -151,15 +158,5 @@ def progress_percentage(
     current: int,
     total: int,
 ) -> float:
-    total = max(total, 1)
-    ratio = current / total
-
-    if phase == "model":
-        return 3.0
-    if phase == "generation":
-        return 5.0 + ratio * 72.0
-    if phase == "decode":
-        return 77.0 + ratio * 18.0
-    if phase == "export":
-        return 98.0
-    return 0.0
+    canonical = ENGINE_PHASES.get(phase)
+    return phase_percentage(canonical, current, total)[0] if canonical else 0.0

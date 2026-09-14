@@ -24,6 +24,7 @@ Nao executar geracao TTS durante testes normais. Nao baixar pesos ou instalar pa
 
 - `web.py`: FastAPI, endpoints, lifecycle do worker e servidor em `127.0.0.1:7860`.
 - `app/jobs.py`: jobs persistentes, claim FIFO atomico, worker unico, cancelamento e recovery.
+- `app/progress.py`: fases canonicas, pesos monotonicamente crescentes e ETA opcional.
 - `app/tts/model_manager.py`: lifecycle efemero do MOSS, single load, reuse e idle unload.
 - `app/markdown_parser.py`: Markdown CommonMark para blocos narraveis.
 - `app/markdown_preview.py`: renderer visual CommonMark seguro, separado do Speech Plan.
@@ -42,6 +43,11 @@ protocolos controlados.
 
 Novas generations preservam WAV FLOAT por unidade. Geracoes legacy sem esses
 artefatos nunca devem recortar MP3 nem regenerar o documento inteiro como fallback.
+
+O progresso e telemetria persistida no Job: nao controla inferencia, fila ou
+cancelamento. A ETA pode ser `null`, usa ritmo observado normalizado por trabalho
+de palavras/pausas e desaparece em estados terminais. O frontend mantem polling
+de 500 ms e rotula a estimativa como tempo da geracao, nao do pipeline completo.
 
 O modelo e carregado sob demanda. O modelo principal usa BF16 na GPU; o audio tokenizer e movido para a GPU quando necessario e permanece em FP32 no fluxo validado. Apenas uma geracao pesada ocorre por vez.
 O `ModelManager` mantem o modelo pronto por 300 segundos apos uso; processor e

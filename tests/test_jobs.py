@@ -64,7 +64,7 @@ def test_migration_v1_to_v2(tmp_path):
         connection.executescript(MIGRATIONS[0][1])
         connection.execute("INSERT INTO schema_migrations VALUES (1, 'now')")
     database.initialize()
-    assert database.schema_version == 4
+    assert database.schema_version == 5
 
 
 def test_enqueue_fifo_progress_and_reopen(library):
@@ -80,6 +80,33 @@ def test_enqueue_fifo_progress_and_reopen(library):
     assert reopened.status == "running"
     assert reopened.progress == 29.0
     assert reopened.heartbeat_at
+
+
+def test_detailed_progress_persists_and_terminal_states_clear_eta(library):
+    repository = JobRepository(library.database)
+    job = enqueue(library)[2]
+    repository.claim_next()
+    repository.update_progress(job.job_id, GenerationProgress(
+        "generation", 2, 4, "Gerando unidade 2 de 4", 26.0,
+        eta_seconds=12.5, elapsed_seconds=8.0, phase_progress=25.0,
+    ))
+    running = repository.get(job.job_id)
+    assert (running.eta_seconds, running.elapsed_seconds, running.phase_progress) == (12.5, 8.0, 25.0)
+    repository.request_cancel(job.job_id)
+    cancelling = repository.get(job.job_id)
+    assert cancelling.eta_seconds is None
+    assert "Cancelamento solicitado" in cancelling.message
+    repository.transition(job.job_id, "cancelled")
+    assert repository.get(job.job_id).eta_seconds is None
+
+
+def test_queue_position_is_fifo_and_only_for_queued_jobs(library):
+    repository = JobRepository(library.database)
+    first, second, third = [enqueue(library, str(index))[2] for index in range(3)]
+    assert [repository.queue_position(job.job_id) for job in (first, second, third)] == [1, 2, 3]
+    repository.claim_next()
+    assert repository.queue_position(first.job_id) is None
+    assert [repository.queue_position(job.job_id) for job in (second, third)] == [1, 2]
 
 
 def test_claim_is_atomic_across_threads(library):

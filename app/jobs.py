@@ -11,6 +11,7 @@ from app.persistence.database import Database
 from app.persistence.library import LibraryStore, utc_now
 from app.services.generation import GenerationCancelled, GenerationService
 from app.services.regeneration import RegenerationService
+from app.progress import ProgressPhase, ProgressTracker
 
 
 @dataclass(frozen=True)
@@ -33,6 +34,9 @@ class GenerationJob:
     message: str = "Aguardando início..."
     operation: str = "generate"
     unit_id: int | None = None
+    eta_seconds: float | None = None
+    elapsed_seconds: float = 0.0
+    phase_progress: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -89,6 +93,19 @@ class JobRepository:
             ).fetchall()
         return [self._row(row) for row in rows]
 
+    def queue_position(self, job_id: str) -> int | None:
+        with self.database.connect() as connection:
+            row = connection.execute(
+                "SELECT 1 + COUNT(*) AS position FROM generation_jobs "
+                "WHERE status='queued' AND queue_sequence < "
+                "(SELECT queue_sequence FROM generation_jobs WHERE job_id=? AND status='queued')",
+                (job_id,),
+            ).fetchone()
+            job = connection.execute(
+                "SELECT status FROM generation_jobs WHERE job_id=?", (job_id,)
+            ).fetchone()
+        return int(row["position"]) if job and job["status"] == "queued" else None
+
     def claim_next(self) -> GenerationJob | None:
         now = utc_now()
         with self.database.connect() as connection:
@@ -100,10 +117,10 @@ class JobRepository:
             if row is None:
                 return None
             updated = connection.execute(
-                "UPDATE generation_jobs SET status = 'running', phase = 'running', "
+                "UPDATE generation_jobs SET status = 'running', phase = 'preparing', "
                 "updated_at = ?, started_at = ?, heartbeat_at = ?, message = ? "
                 "WHERE job_id = ? AND status = 'queued'",
-                (now, now, now, "Analisando Markdown...", row[0]),
+                (now, now, now, "Preparando geração...", row[0]),
             )
             if updated.rowcount != 1:
                 return None
@@ -121,11 +138,18 @@ class JobRepository:
             connection.execute(
                 "UPDATE generation_jobs SET status = ?, phase = ?, updated_at = ?, "
                 "completed_at = COALESCE(?, completed_at), error = ?, message = ?, "
-                "progress = CASE WHEN ? = 'completed' THEN 100 ELSE progress END "
+                "progress = CASE WHEN ? = 'completed' THEN 100 ELSE progress END, "
+                "phase_progress = CASE WHEN ? = 'completed' THEN 100 ELSE phase_progress END, "
+                "eta_seconds = NULL "
                 "WHERE job_id = ?",
                 (status, status, now, terminal, error,
-                 error or {"completed": "Áudio pronto.", "cancelled": "Geração cancelada."}.get(status, current.message),
-                 status, job_id),
+                 error or {
+                     "completed": "Áudio pronto.",
+                     "cancelling": "Cancelamento solicitado. Finalizando operação atual...",
+                     "cancelled": "Geração cancelada.",
+                     "interrupted": "Execução interrompida.",
+                 }.get(status, current.message),
+                 status, status, job_id),
             )
         return self.get(job_id)
 
@@ -134,10 +158,12 @@ class JobRepository:
         with self.database.connect() as connection:
             connection.execute(
                 "UPDATE generation_jobs SET phase = ?, current = ?, total = ?, "
-                "message = ?, progress = ?, updated_at = ?, heartbeat_at = ? "
+                "message = ?, progress = MAX(progress, ?), eta_seconds = ?, "
+                "elapsed_seconds = ?, phase_progress = ?, updated_at = ?, heartbeat_at = ? "
                 "WHERE job_id = ? AND status IN ('running', 'cancelling')",
                 (progress.phase, progress.current, progress.total, progress.message,
-                 progress.progress, now, now, job_id),
+                 progress.progress, progress.eta_seconds, progress.elapsed_seconds,
+                 progress.phase_progress, now, now, job_id),
             )
 
     def request_cancel(self, job_id: str) -> GenerationJob:
@@ -158,7 +184,7 @@ class JobRepository:
             ).fetchall()
             result = connection.execute(
                 "UPDATE generation_jobs SET status = 'interrupted', phase = 'interrupted', "
-                "updated_at = ?, completed_at = ?, message = ? "
+                "updated_at = ?, completed_at = ?, message = ?, eta_seconds = NULL "
                 "WHERE status IN ('running', 'cancelling')",
                 (now, now, "Execução interrompida pelo reinício."),
             )
@@ -225,6 +251,12 @@ class JobWorker:
         generation = self.library.generations.get(job.generation_id)
         document = self.library.documents.get(job.document_id)
         try:
+            tracker = ProgressTracker(
+                lambda progress: self.repository.update_progress(job.job_id, progress),
+                operation=job.operation,
+                unit_id=job.unit_id,
+            )
+            tracker.report(ProgressPhase.PREPARING, message="Preparando geração...")
             if job.operation == "regenerate_unit":
                 with self.library.database.connect() as connection:
                     connection.execute(
@@ -232,11 +264,10 @@ class JobWorker:
                         (job.job_id,),
                     )
                 service = self.service_factory()
+                self._report_model_loading_if_needed(service, tracker)
                 RegenerationService(service.engine).regenerate(
                     self.library, job.generation_id, int(job.unit_id), job.job_id,
-                    progress_callback=lambda phase, current, total, message: self.repository.update_progress(
-                        job.job_id, GenerationProgress(phase, current, total, message, 5 + 90 * current / max(total, 1))
-                    ),
+                    progress_callback=tracker.report,
                     should_cancel=lambda: self.repository.get(job.job_id).status == "cancelling",
                 )
                 self.repository.transition(job.job_id, "completed")
@@ -244,9 +275,14 @@ class JobWorker:
             markdown = self.library.resolve(document.markdown_path).read_text(encoding="utf-8")
             generation_dir = self.library.root / document.document_id / generation.generation_id
             staging, final = generation_dir / ".audio.staging.mp3", generation_dir / "audio.mp3"
-            result, _ = self.service_factory().generate_persisted(
+            service = self.service_factory()
+            self._report_model_loading_if_needed(service, tracker)
+            result, _ = service.generate_persisted(
                 markdown, staging, final, document, generation, self.library,
-                progress_callback=lambda progress: self.repository.update_progress(job.job_id, progress),
+                progress_callback=lambda progress: tracker.report(
+                    progress.phase, progress.current, progress.total, progress.message
+                ),
+                plan_callback=tracker.set_units,
                 should_cancel=lambda: self.repository.get(job.job_id).status == "cancelling",
             )
             self.repository.transition(job.job_id, "completed")
@@ -263,6 +299,16 @@ class JobWorker:
             if job.operation == "regenerate_unit":
                 self._finish_regeneration(job, "failed", self.library.sanitize_error(str(exc)))
         return True
+
+    @staticmethod
+    def _report_model_loading_if_needed(service, tracker: ProgressTracker) -> None:
+        status_method = getattr(service.engine, "status", None)
+        if not callable(status_method):
+            return
+        state = status_method().get("state")
+        tracker.expect_model_loading(state not in {"ready", "generating"})
+        if state not in {"ready", "generating"}:
+            tracker.report(ProgressPhase.MODEL_LOADING, message="Carregando modelo...")
 
     def _finish_regeneration(self, job, status: str, error: str | None = None) -> None:
         with self.library.database.connect() as connection:

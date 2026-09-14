@@ -87,7 +87,7 @@ def test_migration_v2_to_v3_and_idempotent_reopen(tmp_path):
         connection.execute("DROP TABLE playback_state")
     database.initialize()
     database.initialize()
-    assert database.schema_version == 4
+    assert database.schema_version == 5
     with database.connect() as connection:
         assert connection.execute(
             "SELECT name FROM sqlite_master WHERE name = 'playback_state'"

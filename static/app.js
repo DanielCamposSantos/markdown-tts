@@ -2,6 +2,8 @@ const $ = id => document.getElementById(id);
 const markdownInput = $("markdownInput"), filenameInput = $("filename"), generateButton = $("generateButton");
 const reader = $("reader"), unitCount = $("unitCount"), generationCard = $("generationCard");
 const progressMessage = $("progressMessage"), progressPercent = $("progressPercent"), progressBar = $("progressBar");
+const progressPhase = $("progressPhase"), progressElapsed = $("progressElapsed"), progressEta = $("progressEta");
+const cancelJobButton = $("cancelJobButton");
 const playerDock = $("playerDock"), audioPlayer = $("audioPlayer"), playButton = $("playButton");
 const previousButton = $("previousButton"), nextButton = $("nextButton");
 const rewindButton = $("rewindButton"), forwardButton = $("forwardButton"), seekBar = $("seekBar");
@@ -148,6 +150,53 @@ function setProgress(progress, message) {
     progressPercent.textContent = `${Math.round(value)}%`;
     progressMessage.textContent = message || "Processando...";
 }
+
+const phaseLabels = {
+    queued: "Na fila", preparing: "Preparando", model_loading: "Carregando modelo",
+    generation: "Geração", decode: "Decodificação", assemble: "Montagem",
+    export: "Exportação", publish: "Publicação", completed: "Concluído",
+    cancelling: "Cancelando", cancelled: "Cancelado", failed: "Falha", interrupted: "Interrompido"
+};
+
+function formatProgressTime(seconds) {
+    const value = Math.max(0, Math.floor(Number(seconds) || 0));
+    const hours = Math.floor(value / 3600);
+    const minutes = Math.floor((value % 3600) / 60);
+    const remainder = value % 60;
+    const pair = number => String(number).padStart(2, "0");
+    return hours ? `${hours}:${pair(minutes)}:${pair(remainder)}` : `${pair(minutes)}:${pair(remainder)}`;
+}
+
+function renderJobProgress(job) {
+    setProgress(job.progress, job.message);
+    progressPhase.textContent = phaseLabels[job.phase] || job.phase || "";
+    progressElapsed.textContent = `Tempo decorrido: ${formatProgressTime(job.elapsed_seconds)}`;
+    cancelJobButton.classList.toggle("hidden", !["queued", "running", "cancelling"].includes(job.status));
+    cancelJobButton.disabled = job.status === "cancelling";
+    if (["cancelling", "cancelled", "failed", "interrupted", "completed"].includes(job.status)) {
+        progressEta.textContent = "";
+    } else if (job.status === "queued" && job.queue_position) {
+        progressEta.textContent = `Posição na fila: ${job.queue_position}`;
+    } else if (job.eta_seconds == null) {
+        progressEta.textContent = "Calculando estimativa...";
+    } else {
+        progressEta.textContent = `Tempo estimado da geração: ~${formatProgressTime(job.eta_seconds)}`;
+    }
+}
+
+async function cancelActiveJob() {
+    if (!activeJobId) return;
+    cancelJobButton.disabled = true;
+    try {
+        const response = await fetch(`/api/jobs/${activeJobId}/cancel`, {method: "POST"});
+        const job = await response.json();
+        if (!response.ok) throw new Error(job.detail || "Não foi possível cancelar.");
+        renderJobProgress(job);
+    } catch (error) {
+        progressMessage.classList.add("error-message");
+        progressMessage.textContent = error.message;
+    }
+}
 async function startGeneration() {
     const markdown = markdownInput.value.trim();
     if (!markdown) return alert("Cole um Markdown primeiro.");
@@ -168,7 +217,7 @@ async function pollJob() {
     try {
         const response = await fetch(`/api/jobs/${activeJobId}`);
         if (!response.ok) throw new Error("Não foi possível consultar a geração.");
-        const job = await response.json(); setProgress(job.progress, job.message);
+        const job = await response.json(); renderJobProgress(job);
         if (job.status === "completed") {
             generationCard.classList.add("hidden"); generateButton.disabled = false;
             await loadGeneration(job.generation_id); await loadLibrary(); return;
@@ -313,6 +362,7 @@ markdownDropZone.addEventListener("drop", event => {
     if (event.dataTransfer.files[0]) loadMarkdownFile(event.dataTransfer.files[0]);
 });
 generateButton.addEventListener("click", startGeneration);
+cancelJobButton.addEventListener("click", cancelActiveJob);
 generationSelect.addEventListener("change", () => { openGenerationButton.disabled = !generationSelect.value; });
 openGenerationButton.addEventListener("click", () => loadGeneration(generationSelect.value).catch(error => alert(error.message)));
 playButton.addEventListener("click", togglePlayback);

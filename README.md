@@ -202,6 +202,14 @@ Antes de retornar, o plano valida que o conteudo canonico foi preservado e que o
 
 ## Geracao e timeline
 
+O card de processamento acompanha fases reais do job via polling: fila,
+preparacao, carga do modelo quando necessaria, geracao X/Y, decode, montagem,
+exportacao e publicacao. O percentual usa pesos fixos e nunca regride; 100% so
+aparece depois que artefatos e SQLite foram publicados. Tempo decorrido vem do
+backend. A ETA de geracao, sempre aproximada, surge somente depois de tres
+unidades concluidas. Ela usa a mediana recente de segundos por unidade de trabalho,
+ponderando palavras e pausas explicitas, e pode permanecer indisponivel (`null`).
+
 Cada unidade e sintetizada de forma independente, sempre retornando a referencia canonica e o idioma `Portuguese`. O fluxo normal nao usa Continuation/context chaining, pois esse experimento causou deriva progressiva de pitch e prosodia.
 
 Antes do decode, um guard conservador estima a duracao pelos frames acusticos do
@@ -230,7 +238,7 @@ Uma conversao indiscriminada do audio tokenizer inteiro para BF16 tambem nao e a
 - A voz e definida pelo arquivo PT-BR `narrator_reference.wav`, nao pela seed 83 isoladamente e nao por uma referencia gerada em ingles.
 - A estrategia e Direct TTS independente por unidade, sem Continuation.
 - Dividir paragrafos em frases menores foi mantido para reduzir omissoes, melhorar fluidez e permitir timestamps granulares.
-- O audio gerado e o principal artefato do MVP: MP3 em `outputs/`. Nao existe persistencia de Markdown, configuracao ou metadata em formato de biblioteca.
+- SQLite e a fonte de verdade da biblioteca; Markdown, MP3, WAVs por unidade e metadata versionada ficam em `library/`.
 - A interface permanece sem framework frontend para reduzir a superficie operacional do aplicativo local.
 
 ## Limitacoes conhecidas
@@ -239,8 +247,8 @@ Uma conversao indiscriminada do audio tokenizer inteiro para BF16 tambem nao e a
 - E necessario ter FFmpeg no `PATH`.
 - Apenas uma geracao pesada ocorre por vez; outras permanecem na fila FIFO.
 - Ha cancelamento cooperativo, runaway retry e regeneracao individual para geracoes novas com WAVs por unidade.
-- Jobs sao mantidos somente em memoria e nao ha historico ou biblioteca.
-- A interface nao restaura posicao de leitura, nao oferece atalhos, anterior/proxima frase ou exportacao WAV.
+- Jobs, fila, regeneracoes e playback sao persistidos em SQLite; jobs ativos interrompidos sao recuperados explicitamente.
+- A interface restaura posicao e velocidade, oferece navegacao por unidade e usa a timeline real.
 - Algumas siglas tecnicas, como `SYN`, `SYN-ACK`, `ACK`, `HTTPS` e `TLS`, podem exigir avaliacao pontual. O projeto nao aplica um grande dicionario fonetico.
 - A aplicacao nao executa validacao ASR automatica e nao detecta omissoes por transcricao.
 - O arquivo `environment-current.txt` registra um ambiente que funcionou, mas as dependencias ainda nao estao congeladas em um manifesto de instalacao do projeto.

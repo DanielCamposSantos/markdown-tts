@@ -220,6 +220,11 @@ debounce e permanecem separados do Speech Plan e do pipeline de sintese.
 
 ## Fase 8 - Progresso detalhado e estimativa
 
+**Status:** concluida. Jobs persistem fases canonicas, progresso monotonicamente
+ponderado, tempo decorrido e ETA opcional baseada no ritmo por trabalho textual
+do job atual. O
+frontend continua usando polling e mostra a posicao FIFO quando aplicavel.
+
 **Objetivo:** expor fases reais e estimativa aproximada ao usuario.
 
 **Motivacao:** progresso atual e agregado e nao distingue todas as etapas.

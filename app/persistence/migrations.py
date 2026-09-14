@@ -117,6 +117,14 @@ MIGRATIONS: tuple[tuple[int, str], ...] = (
         );
         """,
     ),
+    (
+        5,
+        """
+        ALTER TABLE generation_jobs ADD COLUMN eta_seconds REAL;
+        ALTER TABLE generation_jobs ADD COLUMN elapsed_seconds REAL NOT NULL DEFAULT 0;
+        ALTER TABLE generation_jobs ADD COLUMN phase_progress REAL NOT NULL DEFAULT 0;
+        """,
+    ),
 )
 
 

@@ -26,6 +26,10 @@ def test_generate_get_list_and_cancel_queued(configured_web):
     assert payload["phase"] == "queued"
     assert payload["total_units"] == 0
     assert payload["timeline"] == []
+    assert payload["queue_position"] == 1
+    assert payload["eta_seconds"] is None
+    assert payload["elapsed_seconds"] == 0
+    assert payload["phase_progress"] == 0
     assert listing["jobs"][0]["job_id"] == job_id
     assert web.cancel_job(job_id)["status"] == "cancelled"
     generation_id = payload["generation_id"]
@@ -36,6 +40,14 @@ def test_cancel_running_is_cancelling(configured_web):
     job_id = web.generate(GenerateRequest(markdown="Texto."))["job_id"]
     JobRepository(configured_web.database).claim_next()
     assert web.cancel_job(job_id)["status"] == "cancelling"
+
+
+def test_running_payload_derives_elapsed_from_backend_timestamp(configured_web):
+    job_id = web.generate(GenerateRequest(markdown="Texto."))["job_id"]
+    JobRepository(configured_web.database).claim_next()
+    payload = web.job_status(job_id)
+    assert payload["elapsed_seconds"] >= 0
+    assert payload["updated_at"] is not None
 
 
 def test_job_api_unknown_and_terminal_cancel_errors(configured_web):

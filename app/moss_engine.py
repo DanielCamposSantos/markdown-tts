@@ -560,6 +560,14 @@ class MossEngine:
             .sampling_rate
         )
 
+        if progress_callback:
+            progress_callback(
+                "assemble",
+                total,
+                total,
+                "Montando áudio...",
+            )
+
         master_audio, timeline = (
             combine_audio(
                 decoded_units,

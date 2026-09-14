@@ -49,6 +49,9 @@ class GenerationProgress:
     total: int
     message: str
     progress: float
+    eta_seconds: float | None = None
+    elapsed_seconds: float = 0.0
+    phase_progress: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

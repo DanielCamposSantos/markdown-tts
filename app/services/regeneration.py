@@ -58,9 +58,13 @@ class RegenerationService:
         try:
             if should_cancel and should_cancel():
                 raise GenerationCancelled("Regeneração cancelada.")
+            def engine_progress(phase, current, total, message):
+                if progress_callback is not None and phase not in {"assemble", "export"}:
+                    progress_callback(phase, current, total, message)
+
             self.engine.generate(
                 [unit], one_unit_mp3,
-                progress_callback=progress_callback,
+                progress_callback=engine_progress if progress_callback is not None else None,
                 should_cancel=should_cancel,
                 unit_output_dir=unit_stage,
                 seed_offset=(new_revision - 1) * MANUAL_REGENERATION_SEED_OFFSET,
@@ -72,6 +76,8 @@ class RegenerationService:
             target_index = [int(item["index"]) for item in units_data].index(unit_id_value)
             revised_artifacts[target_index] = library._relative(final_unit)
 
+            if progress_callback is not None:
+                progress_callback("assemble", 1, 1, "Remontando áudio...")
             decoded = []
             sample_rate = None
             for index, (unit_data, artifact) in enumerate(zip(units_data, revised_artifacts)):
@@ -86,6 +92,8 @@ class RegenerationService:
                 ))
             master, timeline = combine_audio(decoded, int(sample_rate))
             staged_audio = staging / final_audio.name
+            if progress_callback is not None:
+                progress_callback("export", 1, 1, "Exportando MP3...")
             export_mp3(master, int(sample_rate), staged_audio)
             revised = dict(metadata)
             revised.update({
@@ -105,6 +113,8 @@ class RegenerationService:
             os.replace(new_unit_stage, final_unit)
             os.replace(staged_audio, final_audio)
             os.replace(staged_metadata, final_metadata)
+            if progress_callback is not None:
+                progress_callback("publish", 1, 1, f"Publicando revisão {new_revision}...")
             self._commit(library, generation, metadata, revised, unit_id_value, job_id, old_revision, new_revision)
             return new_revision
         finally:
