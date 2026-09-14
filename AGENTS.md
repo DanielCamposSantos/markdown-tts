@@ -35,6 +35,7 @@ Nao executar geracao TTS durante testes normais. Nao baixar pesos ou instalar pa
 - `app/persistence/`: SQLite versionado, repositories e artefatos atomicos da biblioteca.
 - `app/playback.py`: helpers deterministas de timeline e navegacao.
 - `app/services/regeneration.py`: regeneracao granular, reassembly e publicacao revisionada.
+- `app/validation/`: contratos ASR experimentais, normalizacao, scoring, validator e benchmark fake/disabled.
 - `static/`: interface e player retomavel; PlaybackState mutavel fica no SQLite.
 
 Arquivos Markdown podem ser lidos localmente pelo navegador ate 5 MiB. O preview
@@ -54,6 +55,10 @@ O `ModelManager` mantem o modelo pronto por 300 segundos apos uso; processor e
 reference codes permanecem em CPU. Consultar status nunca deve disparar load.
 Entre jobs o objeto BF16 pode permanecer em CPU, mas deve sair da GPU antes do
 tokenizer FP32 entrar na GPU para decode.
+
+A Fase 9A nao conecta ASR ao runtime: `ASR_ENABLED=False`. Faster-Whisper e
+Whisper sao apenas candidatos, capabilities usam metadata sem import pesado e o
+corpus neutro serve ao benchmark futuro. Selecao de backend pertence a Fase 9B.
 
 ## Guardrails TTS
 

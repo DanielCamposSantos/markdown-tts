@@ -8,7 +8,7 @@ A geracao ocorre localmente depois que o modelo e seus arquivos auxiliares estiv
 
 Este repositorio contem um MVP funcional validado manualmente. O foco atual e preservar a qualidade da voz e estabelecer uma base para robustez, testes, persistencia e melhorias graduais.
 
-O codigo atual e a fonte de verdade para o que esta implementado. A biblioteca local persistente guarda documentos, geracoes, audio, metadata, playback e WAVs por unidade. Regeneracao individual e cancelamento cooperativo usam a mesma fila; ASR nao faz parte do MVP.
+O codigo atual e a fonte de verdade para o que esta implementado. A biblioteca local persistente guarda documentos, geracoes, audio, metadata, playback e WAVs por unidade. Regeneracao individual e cancelamento cooperativo usam a mesma fila. A infraestrutura experimental de validacao ASR existe, mas permanece desativada e fora do pipeline TTS.
 
 ## Arquitetura
 
@@ -62,6 +62,15 @@ A interface e HTML, CSS e JavaScript vanilla. Nao ha build de Node, React ou Vue
 A posicao, unidade ativa e velocidade sao persistidas por geracao no SQLite com
 throttle de 3 segundos e restauradas sem autoplay. A velocidade altera apenas
 `audio.playbackRate`; o arquivo MP3 gerado nao e alterado.
+
+### Validação ASR experimental
+
+`app/validation/` contém contratos independentes de backend, normalização
+conservadora, métricas de cobertura/similaridade, classificação provisória e um
+harness CPU-only para benchmark futuro. `ASR_ENABLED` é `False`; nenhum backend
+real, modelo ou retry automático está conectado. O corpus neutro em
+`benchmarks/corpus-pt-br.json` permite comparar candidatos posteriormente sem
+usar documentos privados.
 
 ## Requisitos
 
@@ -250,7 +259,7 @@ Uma conversao indiscriminada do audio tokenizer inteiro para BF16 tambem nao e a
 - Jobs, fila, regeneracoes e playback sao persistidos em SQLite; jobs ativos interrompidos sao recuperados explicitamente.
 - A interface restaura posicao e velocidade, oferece navegacao por unidade e usa a timeline real.
 - Algumas siglas tecnicas, como `SYN`, `SYN-ACK`, `ACK`, `HTTPS` e `TLS`, podem exigir avaliacao pontual. O projeto nao aplica um grande dicionario fonetico.
-- A aplicacao nao executa validacao ASR automatica e nao detecta omissoes por transcricao.
+- A aplicacao nao executa validacao ASR automatica; os thresholds experimentais ainda exigem benchmark PT-BR.
 - O arquivo `environment-current.txt` registra um ambiente que funcionou, mas as dependencias ainda nao estao congeladas em um manifesto de instalacao do projeto.
 
 ## Estrutura de pastas

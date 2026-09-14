@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {"id": "cotidiano", "category": "portuguese", "audio_path": "audio/cotidiano.wav", "duration_seconds": 3.0, "expected_text": "Hoje o céu está claro e a praça está tranquila."},
+    {"id": "frase-longa", "category": "long", "audio_path": "audio/frase-longa.wav", "duration_seconds": 8.0, "expected_text": "Durante a revisão, organize os conceitos principais, compare os exemplos e registre as dúvidas para estudar novamente mais tarde."},
+    {"id": "https-tls", "category": "technical", "audio_path": "audio/https-tls.wav", "duration_seconds": 4.0, "expected_text": "O HTTPS utiliza TLS para proteger a comunicação."},
+    {"id": "tcp-flags", "category": "technical", "audio_path": "audio/tcp-flags.wav", "duration_seconds": 3.0, "expected_text": "SYN, SYN-ACK e ACK."},
+    {"id": "numbers", "category": "numbers", "audio_path": "audio/numbers.wav", "duration_seconds": 3.0, "expected_text": "A turma resolveu 24 exercícios em 3 etapas."},
+    {"id": "cplusplus", "category": "technical", "audio_path": "audio/cplusplus.wav", "duration_seconds": 3.0, "expected_text": "C++ é usado por Marina neste exemplo."},
+    {"id": "short", "category": "short", "audio_path": "audio/short.wav", "duration_seconds": 1.5, "expected_text": "Tudo pronto."},
+    {"id": "punctuation", "category": "punctuation", "audio_path": "audio/punctuation.wav", "duration_seconds": 3.0, "expected_text": "Primeiro: observe; depois, compare."},
+    {"id": "context-list", "category": "list", "audio_path": "audio/context-list.wav", "duration_seconds": 5.0, "expected_text": "Etapas: [pause 0.4s] planejar [pause 0.35s] executar [pause 0.35s] revisar."}
+  ]
+}

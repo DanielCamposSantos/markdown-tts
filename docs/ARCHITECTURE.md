@@ -41,7 +41,7 @@ O frontend aceita texto colado, seletor ou drop de Markdown UTF-8 ate 5 MiB. `/a
 - O ModelManager faz lazy load, serializa geracoes, reutiliza o modelo BF16 por uma janela ociosa e descarrega de forma controlada.
 - A biblioteca nao possui ainda reconciliation automatica para artefatos orfaos apos crash.
 - WAV por unidade e historico de regeneracao existem para novas generations; legacy continua sem capacidade granular.
-- Cancelamento e cooperativo entre unidades; ASR nao existe.
+- Cancelamento e cooperativo entre unidades; ASR real nao integra o pipeline.
 - O progresso e agregado em parsing, generation, decode e export.
 - A sincronizacao de playback entre varias abas usa last-write-wins; nao ha realtime.
 - Preview visual e Speech Plan sao tabs separadas; o preview nunca alimenta sintese.
@@ -204,13 +204,21 @@ A migration v4 adiciona `artifact_revision`, operacao/unit ID aos jobs e
 byte-identical. MP3 e metadata novos sao publicados antes de uma unica transaction
 trocar os ponteiros SQLite e reconciliar PlaybackState pela unidade ativa.
 
-## TARGET: ASR e validacao
+## CURRENT: infraestrutura ASR experimental (Fase 9A)
 
-`AudioValidator` deve depender de uma interface `AsrEngine`, nao de uma biblioteca concreta. O pipeline recomendado e:
+O validator depende do Protocol `AsrEngine`, nunca de Whisper/Faster-Whisper. O
+pacote isolado possui `DisabledAsrEngine`, fake, resultados tipados, normalizacao
+conservadora e scoring por cobertura de tokens, extras, similaridade e truncamento.
+Os thresholds sao provisórios e tokens técnicos convertem casos ambiguos em
+`warn`, reduzindo falsos positivos antes do benchmark.
 
 `SpeechUnit esperado -> audio da unidade -> ASR local -> normalizacao -> score/diagnostico -> pass|warn|fail`.
 
-Faster-Whisper e Whisper sao candidatos para benchmark, nao uma escolha nesta fase. O benchmark deve medir PT-BR, memoria, VRAM, latencia e qualidade. Preferir executar ASR apos liberar o MOSS da GPU ou em processo/ciclo controlado, pois a RTX 3060 tem 12 GB.
+O harness percorre corpus local e produz JSON/CSV com tempo, RTF, scores e RAM/VRAM
+opcionais. Faster-Whisper e Whisper continuam apenas candidatos. A Fase 9B deve
+medir PT-BR, memoria, VRAM, latencia e qualidade antes de escolher qualquer um.
+`ASR_ENABLED=False`; não há imports pesados, download, retry ou integração com a
+geração normal.
 
 Normalizacao pode uniformizar case, acentos, espacos e pontuacao, mas deve preservar palavras relevantes, numeros, siglas e tokens tecnicos. Similaridade de caracteres isolada nao basta: combinar cobertura de tokens, alinhamento aproximado e regras para truncamento/audio vazio. Thresholds devem ser configuraveis, explicaveis e limitados para evitar loops de regeneracao.
 

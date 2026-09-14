@@ -249,6 +249,11 @@ frontend continua usando polling e mostra a posicao FIFO quando aplicavel.
 
 ## Fase 9 - ASR local e validacao seletiva
 
+**Status parcial:** Fase 9A concluida somente para infraestrutura. Existem
+`AsrEngine`, fake/disabled, normalizacao, scoring explicavel, validator e harness
+com corpus neutro. A Fase 9B — benchmark real, escolha de backend/modelo e
+integracao opt-in — permanece pendente; nenhum ASR real integra a geracao.
+
 **Objetivo:** detectar omissoes, truncamentos e audio anormal localmente.
 
 **Motivacao:** qualidade subjetiva nao detecta todos os erros de frase ou sigla.
