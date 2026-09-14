@@ -35,6 +35,7 @@ def test_fake_benchmark_calculates_rtf_summary_and_writes_reports(tmp_path):
     assert report.entries[0].real_time_factor == 0.5
     assert report.summary == {"cases": 2, "status_counts": {"pass": 1, "warn": 0, "fail": 1}, "mean_rtf": 0.375}
     assert report.entries[0].ram_mb == 12.5 and report.entries[0].vram_mb is None
+    assert report.entries[0].transcription == "Texto exato"
     json_path, csv_path = tmp_path / "report.json", tmp_path / "report.csv"
     write_json_report(report, json_path)
     write_csv_report(report, csv_path)
@@ -56,3 +57,14 @@ def test_benchmark_measures_processing_when_backend_does_not_report_it(tmp_path)
     entry = run_benchmark([case], engine, clock=lambda: next(ticks)).entries[0]
     assert entry.processing_seconds == 1.25
     assert entry.real_time_factor == 0.5
+
+
+def test_benchmark_records_backend_error_and_continues(tmp_path):
+    def fail(_path, _language):
+        raise RuntimeError("decoder failed")
+
+    case = BenchmarkCase("broken", tmp_path / "audio.wav", "Texto", 2.0)
+    report = run_benchmark([case], FakeAsrEngine(callback=fail), clock=iter((1.0, 1.5)).__next__)
+    entry = report.entries[0]
+    assert entry.status == "fail" and entry.reasons == ("backend_error",)
+    assert entry.error == "RuntimeError: decoder failed"

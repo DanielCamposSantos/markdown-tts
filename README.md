@@ -67,8 +67,9 @@ throttle de 3 segundos e restauradas sem autoplay. A velocidade altera apenas
 
 `app/validation/` contém contratos independentes de backend, normalização
 conservadora, métricas de cobertura/similaridade, classificação provisória e um
-harness CPU-only para benchmark futuro. `ASR_ENABLED` é `False`; nenhum backend
-real, modelo ou retry automático está conectado. O corpus neutro em
+harness CPU-only para benchmark. O backend opcional `FasterWhisperAsrEngine` usa
+somente modelos locais e import lazy; `ASR_ENABLED` é `False`; nenhum backend
+ASR ou retry automático está conectado ao pipeline. O corpus neutro em
 `benchmarks/corpus-pt-br.json` permite comparar candidatos posteriormente sem
 usar documentos privados.
 

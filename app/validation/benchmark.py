@@ -36,15 +36,19 @@ class BenchmarkEntry:
     model: str | None
     ram_mb: float | None = None
     vram_mb: float | None = None
+    transcription: str = ""
+    reasons: tuple[str, ...] = ()
+    error: str | None = None
 
 
 @dataclass(frozen=True)
 class BenchmarkReport:
     entries: tuple[BenchmarkEntry, ...]
     summary: dict
+    metadata: dict | None = None
 
     def to_dict(self) -> dict:
-        return {"entries": [asdict(entry) for entry in self.entries], "summary": self.summary}
+        return {"entries": [asdict(entry) for entry in self.entries], "summary": self.summary, "metadata": self.metadata or {}}
 
 
 def load_corpus(path: Path) -> tuple[BenchmarkCase, ...]:
@@ -74,7 +78,28 @@ def run_benchmark(
     entries = []
     for case in cases:
         started = clock()
-        validation = validate_audio(case.expected_text, case.audio_path, engine, config)
+        try:
+            validation = validate_audio(case.expected_text, case.audio_path, engine, config)
+        except Exception as exc:
+            measured = max(0.0, clock() - started)
+            resource = metrics() if metrics is not None else {}
+            entries.append(BenchmarkEntry(
+                case_id=case.case_id,
+                category=case.category,
+                status="fail",
+                similarity_score=0.0,
+                token_coverage=0.0,
+                audio_duration_seconds=case.duration_seconds,
+                processing_seconds=measured,
+                real_time_factor=measured / case.duration_seconds if case.duration_seconds > 0 else None,
+                backend="unknown",
+                model=None,
+                ram_mb=resource.get("ram_mb"),
+                vram_mb=resource.get("vram_mb"),
+                reasons=("backend_error",),
+                error=f"{type(exc).__name__}: {exc}",
+            ))
+            continue
         measured = max(0.0, clock() - started)
         processing = validation.processing_seconds
         if processing is None or not math.isfinite(processing) or processing < 0:
@@ -94,6 +119,8 @@ def run_benchmark(
             model=validation.model,
             ram_mb=resource.get("ram_mb"),
             vram_mb=resource.get("vram_mb"),
+            transcription=validation.transcription,
+            reasons=validation.reasons,
         ))
     counts = {status: sum(entry.status == status for entry in entries) for status in ("pass", "warn", "fail")}
     valid_rtfs = [entry.real_time_factor for entry in entries if entry.real_time_factor is not None]

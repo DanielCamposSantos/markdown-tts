@@ -215,10 +215,13 @@ Os thresholds sao provisórios e tokens técnicos convertem casos ambiguos em
 `SpeechUnit esperado -> audio da unidade -> ASR local -> normalizacao -> score/diagnostico -> pass|warn|fail`.
 
 O harness percorre corpus local e produz JSON/CSV com tempo, RTF, scores e RAM/VRAM
-opcionais. Faster-Whisper e Whisper continuam apenas candidatos. A Fase 9B deve
-medir PT-BR, memoria, VRAM, latencia e qualidade antes de escolher qualquer um.
-`ASR_ENABLED=False`; não há imports pesados, download, retry ou integração com a
-geração normal.
+opcionais. Faster-Whisper possui adapter opt-in para benchmarks; nenhum backend
+foi escolhido ou conectado ao pipeline. A Fase 9B mede PT-BR, memoria, VRAM,
+latencia e qualidade antes dessa decisão.
+`ASR_ENABLED=False`. O adapter opcional Faster-Whisper exige um caminho local e
+carrega CTranslate2 sob demanda. No Windows, as DLLs CUDA de `torch/lib` são
+expostas apenas ao processo por `os.add_dll_directory`; não há download, retry ou
+integração com a geração normal.
 
 Normalizacao pode uniformizar case, acentos, espacos e pontuacao, mas deve preservar palavras relevantes, numeros, siglas e tokens tecnicos. Similaridade de caracteres isolada nao basta: combinar cobertura de tokens, alinhamento aproximado e regras para truncamento/audio vazio. Thresholds devem ser configuraveis, explicaveis e limitados para evitar loops de regeneracao.
 

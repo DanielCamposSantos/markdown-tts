@@ -22,3 +22,6 @@ library/
 voices/ptbr_candidates/
 voices/*.wav
 !voices/narrator_reference.wav
+
+benchmarks/models/
+benchmarks/results/
