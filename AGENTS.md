@@ -24,6 +24,7 @@ Nao executar geracao TTS durante testes normais. Nao baixar pesos ou instalar pa
 
 - `web.py`: FastAPI, endpoints, lifecycle do worker e servidor em `127.0.0.1:7860`.
 - `app/jobs.py`: jobs persistentes, claim FIFO atomico, worker unico, cancelamento e recovery.
+- `app/tts/model_manager.py`: lifecycle efemero do MOSS, single load, reuse e idle unload.
 - `app/markdown_parser.py`: Markdown CommonMark para blocos narraveis.
 - `app/speech_plan.py`: blocos para `SpeechUnit`, divisao em frases, pausas, validacao de conteudo e links `previous_id`/`next_id`.
 - `app/moss_engine.py`: processor, referencia vocal, geracao Direct TTS por unidade, decoder e montagem/exportacao.
@@ -33,6 +34,10 @@ Nao executar geracao TTS durante testes normais. Nao baixar pesos ou instalar pa
 - `static/`: interface e player.
 
 O modelo e carregado sob demanda. O modelo principal usa BF16 na GPU; o audio tokenizer e movido para a GPU quando necessario e permanece em FP32 no fluxo validado. Apenas uma geracao pesada ocorre por vez.
+O `ModelManager` mantem o modelo pronto por 300 segundos apos uso; processor e
+reference codes permanecem em CPU. Consultar status nunca deve disparar load.
+Entre jobs o objeto BF16 pode permanecer em CPU, mas deve sair da GPU antes do
+tokenizer FP32 entrar na GPU para decode.
 
 ## Guardrails TTS
 

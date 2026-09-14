@@ -137,6 +137,8 @@ class MossEngine:
             self._encode_reference()
         )
 
+        self.model = None
+
         print(
             "MOSS preparado."
         )
@@ -236,6 +238,21 @@ class MossEngine:
         model.eval()
 
         return model
+
+    def load(self) -> None:
+        if self.model is None:
+            try:
+                self.model = self._load_model()
+            except Exception:
+                cleanup_cuda()
+                raise
+
+    def unload(self) -> None:
+        if self.model is not None:
+            model = self.model
+            self.model = None
+            del model
+        cleanup_cuda()
 
     def _generate_unit(
         self,
@@ -392,7 +409,12 @@ class MossEngine:
                 "Carregando MOSS-TTS...",
             )
 
-        model = self._load_model()
+        if self.model is None:
+            raise RuntimeError("Modelo MOSS não carregado.")
+
+        model = self.model.to("cuda:0")
+        self.model = model
+        model.eval()
 
         generated_outputs = []
 
@@ -448,8 +470,7 @@ class MossEngine:
                 )
 
         finally:
-            del model
-
+            self.model = model.to("cpu")
             cleanup_cuda()
 
         generation_seconds = (

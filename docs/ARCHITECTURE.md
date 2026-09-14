@@ -16,7 +16,8 @@ flowchart LR
     API --> Plan[parse_markdown + build_speech_plan]
     API --> Jobs[fila SQLite]
     Jobs --> Worker[JobWorker unico]
-    Worker --> Engine[MossEngine]
+    Worker --> Manager[ModelManager single load e idle unload]
+    Manager --> Engine[MossEngine]
     Engine --> Model[MOSS Local Transformer v1.5 em BF16]
     Engine --> Codec[audio tokenizer em FP32 quando necessario]
     Codec --> Assemble[combine_audio + timeline]
@@ -37,7 +38,7 @@ O frontend faz preview via `/api/plan`, inicia uma geracao, consulta o job por p
 
 - Jobs vivem somente em memoria e desaparecem no restart.
 - Um worker unico usa claim FIFO atomico, heartbeat e recovery; nao ha paralelismo TTS.
-- O modelo e carregado por geracao e liberado depois; nao existe ModelManager explicito.
+- O ModelManager faz lazy load, serializa geracoes, reutiliza o modelo BF16 por uma janela ociosa e descarrega de forma controlada.
 - A biblioteca nao possui ainda reconciliation automatica para artefatos orfaos apos crash.
 - WAV opcional e historico de regeneracao ainda nao existem.
 - Cancelamento e cooperativo entre unidades; ASR, retry seletivo e regeneracao nao existem.

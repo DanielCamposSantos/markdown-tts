@@ -45,7 +45,7 @@ outputs/<nome>_<job_id>.mp3 + player do navegador
 
 `web.py` cria uma aplicacao FastAPI, serve a interface e controla o lifecycle de um unico `JobWorker`. `POST /api/generate` enfileira jobs FIFO no SQLite; somente o worker executa TTS, uma geracao pesada por vez. O frontend consulta o estado persistido por polling a cada 500 ms.
 
-O modelo e inicializado sob demanda na primeira geracao por `MossEngine`. O processor e a codificacao da referencia permanecem no objeto global do engine durante a sessao. O modelo principal e carregado para a GPU para gerar as unidades e depois liberado; o audio tokenizer e movido para a GPU durante a codificacao/decodificacao quando necessario.
+O `ModelManager` inicializa o `MossEngine` sob demanda na primeira geracao. Processor e codigos da referencia permanecem em CPU durante a sessao. O mesmo modelo principal BF16 e reutilizado entre jobs, retornando a CPU antes do tokenizer FP32 ir para GPU no decode; ele e liberado apos 300 segundos ocioso.
 
 ### Frontend
 
@@ -158,6 +158,7 @@ O nome informado pelo usuario e sanitizado para o titulo/download. Novas geracoe
 - `POST /api/plan` recebe `{ "markdown": "..." }` e retorna a quantidade de blocos e as unidades com `id`, `kind`, `text`, `previous_id` e `next_id`.
 - `POST /api/generate` recebe `{ "markdown": "...", "filename": "..." }`, persiste um job `queued` e retorna seu `job_id`.
 - `GET /api/jobs` lista a fila persistente; `POST /api/jobs/{job_id}/cancel` solicita cancelamento.
+- `GET /api/model/status` informa lifecycle e disponibilidade CUDA sem carregar o MOSS.
 - `GET /api/jobs/{job_id}` retorna estado, progresso, timeline e, ao concluir, a URL do audio.
 - `GET /api/download/{job_id}` envia o MP3 concluido como `audio/mpeg`.
 - `GET /audio/<arquivo>` serve diretamente os arquivos em `outputs/`.

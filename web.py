@@ -40,6 +40,7 @@ from app.speech_plan import (
 from app.services.generation import GenerationService
 from app.persistence import LibraryStore
 from app.jobs import JobRepository, JobWorker
+from app.tts import ModelManager
 
 if TYPE_CHECKING:
     from app.services.generation import TtsEngine
@@ -58,12 +59,15 @@ INDEX_FILE = (
 
 @asynccontextmanager
 async def lifespan(_app):
+    current_manager = get_model_manager()
+    current_manager.start()
     current_worker = get_worker()
     current_worker.start()
     try:
         yield
     finally:
         current_worker.stop()
+        current_manager.shutdown()
 
 
 app = FastAPI(title="Markdown TTS", lifespan=lifespan)
@@ -104,6 +108,7 @@ class PlanRequest(
 
 
 engine: TtsEngine | None = None
+model_manager: ModelManager | None = None
 library_store: LibraryStore | None = None
 job_worker: JobWorker | None = None
 
@@ -115,10 +120,27 @@ def get_engine() -> TtsEngine:
         return engine
 
     if engine is None:
-        from app.moss_engine import MossEngine
-        engine = MossEngine()
+        engine = get_model_manager()
 
     return engine
+
+
+def get_model_manager() -> ModelManager:
+    global model_manager
+    if model_manager is None:
+        def engine_factory():
+            from app.moss_engine import MossEngine
+            return MossEngine()
+
+        def cuda_available() -> bool:
+            import torch
+            return torch.cuda.is_available()
+
+        model_manager = ModelManager(
+            engine_factory,
+            cuda_available=cuda_available,
+        )
+    return model_manager
 
 
 def get_library() -> LibraryStore:
@@ -137,6 +159,11 @@ def get_worker() -> JobWorker:
             service_factory=lambda: GenerationService(get_engine()),
         )
     return job_worker
+
+
+@app.get("/api/model/status")
+def model_status():
+    return get_model_manager().status()
 
 
 def safe_filename(

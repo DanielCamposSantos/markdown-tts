@@ -117,6 +117,9 @@ tentativa original permanece inalterada; nao ha ASR nem duration forcing.
 
 ## Fase 4 - ModelManager e lifecycle GPU
 
+**Status:** implementada. O modelo usa lazy load, exclusividade de geracao,
+reutilizacao por 300 segundos, unload ocioso, recovery de erro e shutdown.
+
 **Objetivo:** controlar carga, reutilizacao e liberacao do MOSS de forma observavel.
 
 **Motivacao:** carregar/descarregar o modelo custa tempo e a VRAM e limitada.
