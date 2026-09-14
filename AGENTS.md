@@ -26,6 +26,7 @@ Nao executar geracao TTS durante testes normais. Nao baixar pesos ou instalar pa
 - `app/jobs.py`: jobs persistentes, claim FIFO atomico, worker unico, cancelamento e recovery.
 - `app/tts/model_manager.py`: lifecycle efemero do MOSS, single load, reuse e idle unload.
 - `app/markdown_parser.py`: Markdown CommonMark para blocos narraveis.
+- `app/markdown_preview.py`: renderer visual CommonMark seguro, separado do Speech Plan.
 - `app/speech_plan.py`: blocos para `SpeechUnit`, divisao em frases, pausas, validacao de conteudo e links `previous_id`/`next_id`.
 - `app/moss_engine.py`: processor, referencia vocal, geracao Direct TTS por unidade, decoder e montagem/exportacao.
 - `app/audio_io.py`: audio tensor, silencio, concatenacao, timeline e WAV temporario via `soundfile` para MP3 via FFmpeg.
@@ -34,6 +35,10 @@ Nao executar geracao TTS durante testes normais. Nao baixar pesos ou instalar pa
 - `app/playback.py`: helpers deterministas de timeline e navegacao.
 - `app/services/regeneration.py`: regeneracao granular, reassembly e publicacao revisionada.
 - `static/`: interface e player retomavel; PlaybackState mutavel fica no SQLite.
+
+Arquivos Markdown podem ser lidos localmente pelo navegador ate 5 MiB. O preview
+nao e fonte de texto do TTS; HTML raw e imagens ficam desabilitados e links usam
+protocolos controlados.
 
 Novas generations preservam WAV FLOAT por unidade. Geracoes legacy sem esses
 artefatos nunca devem recortar MP3 nem regenerar o documento inteiro como fallback.

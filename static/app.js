@@ -8,11 +8,15 @@ const rewindButton = $("rewindButton"), forwardButton = $("forwardButton"), seek
 const currentTimeLabel = $("currentTime"), durationLabel = $("duration"), speedSelect = $("speedSelect");
 const downloadButton = $("downloadButton"), generationSelect = $("generationSelect");
 const openGenerationButton = $("openGenerationButton");
+const markdownPreview = $("markdownPreview"), previewTab = $("previewTab"), speechPlanTab = $("speechPlanTab");
+const markdownDropZone = $("markdownDropZone"), markdownFileInput = $("markdownFileInput");
+const openMarkdownButton = $("openMarkdownButton"), fileError = $("fileError");
 
 let previewTimer, pollTimer, activeJobId, activeGenerationId, pendingPlayback;
 let timeline = [], activeUnitIndex = -1, lastPlaybackSave = 0, playbackSaveInFlight = false;
 let playbackSavePending = false;
 let regenerationAvailable = false, regenerationBusy = false;
+let previewSequence = 0, activePreviewTab = "preview", filenameWasEdited = false, dragDepth = 0;
 
 function escapeHtml(value) {
     return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;")
@@ -76,12 +80,67 @@ function bindReaderClicks() {
 }
 async function updatePreview() {
     const markdown = markdownInput.value.trim();
-    if (!markdown) return renderUnits([]);
+    const sequence = ++previewSequence;
+    if (!markdown) {
+        renderUnits([]);
+        markdownPreview.innerHTML = '<div class="empty-state"><strong>Aguardando Markdown</strong></div>';
+        return selectPreviewTab(activePreviewTab);
+    }
     try {
-        const response = await fetch("/api/plan", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({markdown})});
-        if (!response.ok) throw new Error("Preview inválido.");
-        renderUnits((await response.json()).units, false);
+        const options = {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({markdown})};
+        const [planResponse, previewResponse] = await Promise.all([
+            fetch("/api/plan", options), fetch("/api/preview", options)
+        ]);
+        if (!planResponse.ok || !previewResponse.ok) throw new Error("Preview inválido.");
+        const [plan, preview] = await Promise.all([planResponse.json(), previewResponse.json()]);
+        if (sequence !== previewSequence) return;
+        renderUnits(plan.units, false);
+        markdownPreview.innerHTML = preview.html;
+        selectPreviewTab(activePreviewTab);
     } catch (error) { console.error(error); }
+}
+
+async function updateMarkdownPreview(markdown) {
+    try {
+        const response = await fetch("/api/preview", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({markdown})});
+        if (!response.ok) throw new Error("Preview inválido.");
+        markdownPreview.innerHTML = (await response.json()).html;
+        selectPreviewTab(activePreviewTab);
+    } catch (error) { console.error(error); }
+}
+
+function selectPreviewTab(name) {
+    activePreviewTab = name;
+    const previewActive = name === "preview";
+    markdownPreview.classList.toggle("hidden", !previewActive);
+    reader.classList.toggle("hidden", previewActive);
+    previewTab.setAttribute("aria-selected", String(previewActive));
+    speechPlanTab.setAttribute("aria-selected", String(!previewActive));
+}
+
+function showFileError(message) {
+    fileError.textContent = message || "";
+    fileError.classList.toggle("hidden", !message);
+}
+
+async function loadMarkdownFile(file) {
+    const validation = MarkdownFile.validate(file);
+    if (validation) return showFileError(validation);
+    if (markdownInput.value && !confirm("Substituir o Markdown atual pelo conteúdo deste arquivo?")) return;
+    try {
+        const bytes = await file.arrayBuffer();
+        const text = new TextDecoder("utf-8", {fatal: true}).decode(bytes);
+        markdownInput.value = text;
+        if (!filenameWasEdited || filenameInput.value === "narracao") {
+            filenameInput.value = MarkdownFile.titleFromFilename(file.name);
+        }
+        showFileError("");
+        updatePreview();
+    } catch (error) {
+        showFileError("Não foi possível ler o arquivo como UTF-8 válido.");
+    } finally {
+        markdownFileInput.value = "";
+    }
 }
 function setProgress(progress, message) {
     const value = Math.min(100, Math.max(0, Number(progress) || 0));
@@ -146,11 +205,13 @@ async function loadGeneration(generationId) {
     if (documentResponse.ok) {
         const savedDocument = await documentResponse.json();
         markdownInput.value = savedDocument.markdown; filenameInput.value = savedDocument.title;
+        updateMarkdownPreview(savedDocument.markdown);
     }
     activeGenerationId = generationId; timeline = generation.metadata.timeline || []; activeUnitIndex = -1;
     regenerationAvailable = Boolean(generation.regeneration_available);
     regenerationBusy = false;
     renderUnits(timeline, true); downloadButton.href = generation.download_url;
+    selectPreviewTab(activePreviewTab);
     playerDock.classList.remove("hidden");
     const playbackResponse = await fetch(`/api/generations/${generationId}/playback`);
     const saved = playbackResponse.ok ? await playbackResponse.json() : null;
@@ -238,6 +299,19 @@ function togglePlayback() {
 }
 
 markdownInput.addEventListener("input", () => { clearTimeout(previewTimer); previewTimer = setTimeout(updatePreview, 350); });
+filenameInput.addEventListener("input", () => { filenameWasEdited = true; });
+previewTab.addEventListener("click", () => selectPreviewTab("preview"));
+speechPlanTab.addEventListener("click", () => selectPreviewTab("speech"));
+openMarkdownButton.addEventListener("click", () => markdownFileInput.click());
+markdownDropZone.addEventListener("keydown", event => { if (event.target === markdownDropZone && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); markdownFileInput.click(); } });
+markdownFileInput.addEventListener("change", () => { if (markdownFileInput.files[0]) loadMarkdownFile(markdownFileInput.files[0]); });
+markdownDropZone.addEventListener("dragenter", event => { event.preventDefault(); dragDepth += 1; markdownDropZone.classList.add("drag-active"); });
+markdownDropZone.addEventListener("dragover", event => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; });
+markdownDropZone.addEventListener("dragleave", () => { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) markdownDropZone.classList.remove("drag-active"); });
+markdownDropZone.addEventListener("drop", event => {
+    event.preventDefault(); dragDepth = 0; markdownDropZone.classList.remove("drag-active");
+    if (event.dataTransfer.files[0]) loadMarkdownFile(event.dataTransfer.files[0]);
+});
 generateButton.addEventListener("click", startGeneration);
 generationSelect.addEventListener("change", () => { openGenerationButton.disabled = !generationSelect.value; });
 openGenerationButton.addEventListener("click", () => loadGeneration(generationSelect.value).catch(error => alert(error.message)));

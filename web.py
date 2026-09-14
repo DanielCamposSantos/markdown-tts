@@ -45,6 +45,7 @@ from app.tts import ModelManager
 from app.domain.models import PlaybackState
 from app.persistence.library import utc_now
 from app.playback import active_unit_at, unit_id
+from app.markdown_preview import MAX_MARKDOWN_INPUT_BYTES, render_markdown_preview
 
 if TYPE_CHECKING:
     from app.services.generation import TtsEngine
@@ -108,6 +109,10 @@ class GenerateRequest(
 class PlanRequest(
     BaseModel
 ):
+    markdown: str
+
+
+class PreviewRequest(BaseModel):
     markdown: str
 
 
@@ -308,6 +313,13 @@ def generate(
     return {
         "job_id": job.job_id,
     }
+
+
+@app.post("/api/preview")
+def preview_markdown(request: PreviewRequest):
+    if len(request.markdown.encode("utf-8")) > MAX_MARKDOWN_INPUT_BYTES:
+        raise HTTPException(status_code=413, detail="Markdown excede o limite de 5 MiB.")
+    return {"html": render_markdown_preview(request.markdown)}
 
 
 @app.get("/api/library")

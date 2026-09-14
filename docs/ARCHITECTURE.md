@@ -32,7 +32,7 @@ flowchart LR
 
 `moss_engine.py` codifica a referencia com `soundfile`, move o tokenizer para CUDA, devolve os codigos para CPU, carrega o modelo em BF16 e gera cada unidade independentemente. Antes do decode, o runaway guard conta frames acusticos, rejeita duracoes claramente implausiveis e repete somente a unidade afetada com seed deterministica. Depois o engine decodifica, preserva WAV FLOAT lossless por unidade, combina e exporta. `audio_io.py` gera `AudioTimelineEntry` com inicio/fim reais e pausa posterior. MP3s e manifests revisionados ficam em `library/`; SQLite aponta para a revisao autoritativa.
 
-O frontend faz preview via `/api/plan`, inicia uma geracao, consulta o job por polling de 500 ms e pode reabrir geracoes concluidas. O player usa timestamps reais para highlight, anterior/proxima, +/-10 s e clique na unidade. Posicao, unidade ativa e velocidade 0.75x-2x ficam na tabela `playback_state` e sao restauradas sem autoplay.
+O frontend aceita texto colado, seletor ou drop de Markdown UTF-8 ate 5 MiB. `/api/preview` usa markdown-it-py com HTML/imagens desabilitados e links limitados a HTTP, HTTPS, mailto ou relativos; `/api/plan` continua sendo a fonte separada das SpeechUnits. O player usa timestamps reais para highlight, anterior/proxima, +/-10 s e clique na unidade. Posicao, unidade ativa e velocidade 0.75x-2x ficam na tabela `playback_state` e sao restauradas sem autoplay.
 
 ## CURRENT: problemas e limites
 
@@ -44,7 +44,7 @@ O frontend faz preview via `/api/plan`, inicia uma geracao, consulta o job por p
 - Cancelamento e cooperativo entre unidades; ASR nao existe.
 - O progresso e agregado em parsing, generation, decode e export.
 - A sincronizacao de playback entre varias abas usa last-write-wins; nao ha realtime.
-- O preview atual e o Speech Plan, nao um renderer Markdown completo.
+- Preview visual e Speech Plan sao tabs separadas; o preview nunca alimenta sintese.
 - Algumas siglas podem exigir tratamento pontual; nao ha dicionario fonetico.
 - `environment-current.txt` e snapshot diagnostico, nao lock de dependencias.
 - O `.gitignore` versionado contem texto literal de um bloco PowerShell, aparentando ser uma inconsistência operacional que deve ser corrigida separadamente e com cuidado.
@@ -218,7 +218,7 @@ Normalizacao pode uniformizar case, acentos, espacos e pontuacao, mas deve prese
 
 Manter polling como primeira evolucao: o frontend ja o usa, o ambiente e local e o protocolo e simples de depurar. Melhorar o payload para incluir fase, unidade, contadores, mensagem, ETA opcional e erro estruturado. Considerar SSE se muitos clientes ou polling frequente se tornar problema; WebSocket nao e necessario para eventos unidirecionais e adicionaria complexidade operacional.
 
-## TARGET: frontend
+## CURRENT: frontend
 
 Continuar com JavaScript vanilla enquanto o fluxo couber nele. Separar visualmente editor/preview, biblioteca, fila, reader e player sem obrigar uma build Node. O preview Markdown deve ser seguro e renderizar estrutura visual sem se tornar a fonte do texto de sintese. Cada elemento de leitura deve manter referencia ao `unit_id` e a timeline real.
 

@@ -77,6 +77,13 @@
             <button id="openGenerationButton" type="button" title="Abrir geração selecionada" disabled>Abrir</button>
         </div>
 
+        <div id="markdownDropZone" class="markdown-drop-zone" tabindex="0">
+            <input id="markdownFileInput" type="file" accept=".md,.markdown,text/markdown" hidden>
+            <button id="openMarkdownButton" type="button">Abrir arquivo Markdown</button>
+            <span>ou arraste um .md aqui</span>
+        </div>
+        <p id="fileError" class="file-error hidden" role="alert"></p>
+
 
         <textarea
             id="markdownInput"
@@ -108,15 +115,24 @@ O texto será dividido em frases mantendo títulos, parágrafos e listas."
                 </span>
 
                 <h2>
-                    Estrutura de fala
+                    Leitura e preview
                 </h2>
             </div>
         </div>
 
 
+        <div class="preview-tabs" role="tablist" aria-label="Visualização do Markdown">
+            <button id="previewTab" role="tab" aria-selected="true" aria-controls="markdownPreview">Preview</button>
+            <button id="speechPlanTab" role="tab" aria-selected="false" aria-controls="reader">Speech Plan</button>
+        </div>
+
+        <div id="markdownPreview" class="markdown-preview" role="tabpanel"></div>
+
+
         <div
             id="reader"
-            class="reader empty-reader"
+            class="reader empty-reader hidden"
+            role="tabpanel"
         >
             <div class="empty-state">
                 <div class="empty-icon">
@@ -264,9 +280,8 @@ O texto será dividido em frases mantendo títulos, parágrafos e listas."
 </section>
 
 
-<script
-    src="/static/app.js"
-></script>
+<script src="/static/file_input.js"></script>
+<script src="/static/app.js"></script>
 
 </body>
 </html>

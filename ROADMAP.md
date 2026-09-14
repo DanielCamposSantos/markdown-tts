@@ -195,6 +195,9 @@ pela mesma fila. Geracoes legacy permanecem read-only para esta operacao.
 
 ## Fase 7 - Drag-and-drop e preview Markdown real
 
+**Status:** concluida. Seletor/drop local UTF-8 e preview CommonMark seguro usam
+debounce e permanecem separados do Speech Plan e do pipeline de sintese.
+
 **Objetivo:** melhorar entrada e leitura visual sem quebrar o Speech Plan.
 
 **Motivacao:** colar texto funciona, mas arquivos e preview renderizado reduzem friccao.

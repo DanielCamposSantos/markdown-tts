@@ -51,8 +51,8 @@ O `ModelManager` inicializa o `MossEngine` sob demanda na primeira geracao. Proc
 
 A interface e HTML, CSS e JavaScript vanilla. Nao ha build de Node, React ou Vue. O navegador oferece:
 
-- textarea para Markdown e campo para nome do arquivo;
-- preview debounced do Speech Plan;
+- textarea, seletor e drag-and-drop para `.md`/`.markdown` UTF-8 de ate 5 MiB;
+- preview CommonMark seguro e Speech Plan em tabs separadas, ambos com debounce;
 - progresso por fase da geracao;
 - biblioteca minima para reabrir uma geracao concluida;
 - play/pause, anterior/proxima unidade, +/-10 s, seek, download e velocidade de 0.75x a 2x;
@@ -164,6 +164,7 @@ separados.
 
 - `GET /` serve `static/index.html`.
 - `POST /api/plan` recebe `{ "markdown": "..." }` e retorna a quantidade de blocos e as unidades com `id`, `kind`, `text`, `previous_id` e `next_id`.
+- `POST /api/preview` renderiza apresentacao CommonMark segura, sem participar do TTS.
 - `POST /api/generate` recebe `{ "markdown": "...", "filename": "..." }`, persiste um job `queued` e retorna seu `job_id`.
 - `GET /api/jobs` lista a fila persistente; `POST /api/jobs/{job_id}/cancel` solicita cancelamento.
 - `GET /api/model/status` informa lifecycle e disponibilidade CUDA sem carregar o MOSS.
