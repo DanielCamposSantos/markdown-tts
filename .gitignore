@@ -6,6 +6,7 @@ __pycache__/
 
 outputs/
 temp/
+library/
 
 .cache/
 .pytest_cache/

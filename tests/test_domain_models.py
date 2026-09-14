@@ -14,6 +14,7 @@ def test_job_status_values_match_public_runtime_states():
         "running",
         "completed",
         "error",
+        "failed",
     ]
 
 

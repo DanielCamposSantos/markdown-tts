@@ -72,3 +72,35 @@ def test_generation_service_propagates_engine_error(tmp_path):
 
     with pytest.raises(RuntimeError, match="engine failure"):
         GenerationService(engine).generate("Texto.", tmp_path / "x.mp3")
+
+
+def test_persisted_generation_marks_failure_and_removes_staging(tmp_path):
+    failure = RuntimeError("engine failure")
+    engine = FakeEngine(error=failure)
+    events = []
+
+    class FakeStore:
+        def mark_running(self, generation_id):
+            events.append(("running", generation_id))
+
+        def mark_failed(self, generation_id, error):
+            events.append(("failed", generation_id, error))
+
+        def complete(self, *args):
+            raise AssertionError("must not complete")
+
+    class Generation:
+        generation_id = "generation-id"
+
+    staging = tmp_path / "staging.mp3"
+    staging.write_bytes(b"partial")
+    with pytest.raises(RuntimeError, match="engine failure"):
+        GenerationService(engine).generate_persisted(
+            "Texto.", staging, tmp_path / "audio.mp3",
+            object(), Generation(), FakeStore(),
+        )
+    assert events == [
+        ("running", "generation-id"),
+        ("failed", "generation-id", "engine failure"),
+    ]
+    assert not staging.exists()

@@ -11,6 +11,7 @@ class JobStatus(str, Enum):
     RUNNING = "running"
     COMPLETED = "completed"
     ERROR = "error"
+    FAILED = "failed"
 
 
 @dataclass(frozen=True)

@@ -8,7 +8,7 @@ A geracao ocorre localmente depois que o modelo e seus arquivos auxiliares estiv
 
 Este repositorio contem um MVP funcional validado manualmente. O foco atual e preservar a qualidade da voz e estabelecer uma base para robustez, testes, persistencia e melhorias graduais.
 
-O codigo atual e a fonte de verdade para o que esta implementado. Recursos como biblioteca de documentos, cancelamento, ASR, regeneracao individual, atalhos de teclado e persistencia ainda nao fazem parte do MVP.
+O codigo atual e a fonte de verdade para o que esta implementado. A biblioteca local persistente guarda documentos, geracoes, audio e metadata. Cancelamento, ASR, regeneracao individual e atalhos ainda nao fazem parte do MVP.
 
 ## Arquitetura
 
@@ -150,7 +150,7 @@ Acesse manualmente:
 http://127.0.0.1:7860
 ```
 
-O nome informado pelo usuario e sanitizado para formar o arquivo. O resultado fica em `outputs/` com o formato aproximado `<nome>_<job_id>.mp3`. Os arquivos podem permanecer no disco ate uma limpeza manual; a aplicacao nao possui politica de retencao.
+O nome informado pelo usuario e sanitizado para o titulo/download. Novas geracoes ficam em `library/<document_id>/<generation_id>/`, com `audio.mp3` e `metadata.json`; `library.db` e a fonte de verdade. Arquivos legados em `outputs/` permanecem intactos.
 
 ## API local
 
@@ -160,8 +160,12 @@ O nome informado pelo usuario e sanitizado para formar o arquivo. O resultado fi
 - `GET /api/jobs/{job_id}` retorna estado, progresso, timeline e, ao concluir, a URL do audio.
 - `GET /api/download/{job_id}` envia o MP3 concluido como `audio/mpeg`.
 - `GET /audio/<arquivo>` serve diretamente os arquivos em `outputs/`.
+- `GET /api/library` lista documentos e geracoes persistidos.
+- `GET /api/library/{document_id}` recupera Markdown e geracoes do documento.
+- `GET /api/generations/{generation_id}` recupera estado, metadata e timeline.
+- `GET /api/generations/{generation_id}/audio` e `/download` servem o audio por ID.
 
-Os jobs nao sao persistidos. Reiniciar o processo perde o estado dos jobs, embora arquivos ja escritos em `outputs/` possam continuar presentes.
+Os jobs ativos continuam em memoria. Reiniciar perde o polling do job, mas documentos e geracoes concluidas continuam consultaveis pela biblioteca SQLite.
 
 ## Pipeline de Markdown e fala
 

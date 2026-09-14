@@ -22,7 +22,7 @@ flowchart LR
     Engine --> Codec[audio tokenizer em FP32 quando necessario]
     Codec --> Assemble[combine_audio + timeline]
     Assemble --> IO[soundfile WAV temporario + FFmpeg MP3]
-    IO --> Outputs[outputs/*.mp3]
+    IO --> Library[library SQLite + audio.mp3 + metadata.json]
     Outputs --> Browser
 ```
 
@@ -30,7 +30,7 @@ flowchart LR
 
 `markdown_parser.py` usa `markdown-it-py` em CommonMark e produz `MarkdownBlock` para headings, paragraphs, lists, blockquotes e code. `speech_plan.py` produz `SpeechUnit` imutavel, divide paragrafos em frases, adiciona pausas, trata listas contextuais e valida preservacao de conteudo. `link_units` atribui `previous_id` e `next_id`; `section_id`, `paragraph_id` e `sentence_index` apoiam estrutura e navegacao.
 
-`moss_engine.py` codifica a referencia com `soundfile`, move o tokenizer para CUDA, devolve os codigos para CPU, carrega o modelo em BF16, gera cada unidade independentemente, move saidas para CPU, decodifica, combina e exporta. `audio_io.py` gera `AudioTimelineEntry` com inicio/fim reais e pausa posterior. O MP3 e escrito em `outputs/`; jobs e timeline nao sao persistidos.
+`moss_engine.py` codifica a referencia com `soundfile`, move o tokenizer para CUDA, devolve os codigos para CPU, carrega o modelo em BF16, gera cada unidade independentemente, move saidas para CPU, decodifica, combina e exporta. `audio_io.py` gera `AudioTimelineEntry` com inicio/fim reais e pausa posterior. Novos MP3s, Markdown e manifests ficam em `library/`; SQLite indexa documentos, geracoes e timeline via metadata. Jobs ativos continuam em memoria.
 
 O frontend faz preview via `/api/plan`, inicia uma geracao, consulta o job por polling de 500 ms, carrega o MP3 e usa timestamps reais para highlight. Possui play/pause, seek bar, velocidade 0.75x-2x, clique na unidade e download.
 
@@ -39,8 +39,8 @@ O frontend faz preview via `/api/plan`, inicia uma geracao, consulta o job por p
 - Jobs vivem somente em memoria e desaparecem no restart.
 - Uma thread daemon e um lock permitem apenas uma geracao, mas nao existe fila persistente, lease ou recovery.
 - O modelo e carregado por geracao e liberado depois; nao existe ModelManager explicito.
-- Falhas podem deixar arquivo parcial em `outputs/`; nao ha metadata transacional.
-- Nao existe biblioteca de documentos, Markdown persistido, WAV opcional ou historico de regeneracao.
+- A biblioteca nao possui ainda reconciliation automatica para artefatos orfaos apos crash.
+- WAV opcional e historico de regeneracao ainda nao existem.
 - Nao existe cancelamento, ASR, retry seletivo ou regeneracao de unidade.
 - O progresso e agregado em parsing, generation, decode e export.
 - O player nao restaura posicao do servidor e nao tem anterior/proxima, +/-10 s ou atalhos.

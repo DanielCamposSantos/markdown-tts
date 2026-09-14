@@ -57,6 +57,9 @@ Este roadmap transforma o MVP funcional em uma aplicacao local de estudo mais ro
 
 ## Fase 2 - Persistencia da biblioteca e metadata
 
+**Status:** implementada. Novas geracoes usam SQLite + filesystem em `library/`,
+com manifesto `metadata.json` versionado e publicacao atomica dos artefatos.
+
 **Objetivo:** criar biblioteca local de documentos e geracoes com recuperacao confiavel.
 
 **Motivacao:** jobs e resultados atuais sao efemeros; reiniciar o servidor perde a referencia das geracoes.

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Callable, Protocol
+from typing import Any, Callable, Protocol
 
 from app.domain.models import GenerationProgress, GenerationResult
 from app.markdown_parser import parse_markdown
@@ -19,6 +19,15 @@ class TtsEngine(Protocol):
         output_file: Path,
         progress_callback: Callable[[str, int, int, str], None] | None = None,
     ) -> GenerationResult: ...
+
+
+class GenerationStore(Protocol):
+    def mark_running(self, generation_id: str) -> None: ...
+    def mark_failed(self, generation_id: str, error: str) -> None: ...
+    def complete(
+        self, document: Any, generation: Any, staging_audio: Path,
+        final_audio: Path, result: GenerationResult, units: list[SpeechUnit],
+    ) -> Any: ...
 
 
 class GenerationService:
@@ -65,6 +74,46 @@ class GenerationService:
             output_file=output_file,
             progress_callback=report_progress,
         )
+
+    def generate_persisted(
+        self,
+        markdown: str,
+        staging_file: Path,
+        final_file: Path,
+        document: Any,
+        generation: Any,
+        store: GenerationStore,
+        progress_callback: ProgressCallback | None = None,
+        plan_callback: PlanCallback | None = None,
+    ) -> tuple[GenerationResult, Any]:
+        units: list[SpeechUnit] = []
+
+        def capture_plan(plan: list[SpeechUnit]) -> None:
+            units.extend(plan)
+            if plan_callback is not None:
+                plan_callback(plan)
+
+        store.mark_running(generation.generation_id)
+        try:
+            result = self.generate(
+                markdown,
+                staging_file,
+                progress_callback=progress_callback,
+                plan_callback=capture_plan,
+            )
+            stored = store.complete(
+                document,
+                generation,
+                staging_file,
+                final_file,
+                result,
+                units,
+            )
+            return result, stored
+        except Exception as exc:
+            staging_file.unlink(missing_ok=True)
+            store.mark_failed(generation.generation_id, str(exc))
+            raise
 
 
 def progress_percentage(

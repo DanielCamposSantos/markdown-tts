@@ -28,6 +28,7 @@ Nao executar geracao TTS durante testes normais. Nao baixar pesos ou instalar pa
 - `app/moss_engine.py`: processor, referencia vocal, geracao Direct TTS por unidade, decoder e montagem/exportacao.
 - `app/audio_io.py`: audio tensor, silencio, concatenacao, timeline e WAV temporario via `soundfile` para MP3 via FFmpeg.
 - `app/config.py`: checkpoint, parametros de amostragem, paths e bitrate.
+- `app/persistence/`: SQLite versionado, repositories e artefatos atomicos da biblioteca.
 - `static/`: interface e player.
 
 O modelo e carregado sob demanda. O modelo principal usa BF16 na GPU; o audio tokenizer e movido para a GPU quando necessario e permanece em FP32 no fluxo validado. Apenas uma geracao pesada ocorre por vez.
@@ -63,6 +64,8 @@ Testes de MOSS, GPU, codec e qualidade de audio devem ficar separados, explicita
 - Usar as abstracoes existentes antes de criar novas.
 - Separar dominio, infraestrutura, jobs e API somente quando isso reduzir acoplamento real.
 - Usar escrita atomica para artefatos persistentes futuros.
+- Tratar SQLite como fonte de verdade; paths persistidos sao relativos a `library/`.
+- Nunca marcar uma geracao `completed` antes de audio e metadata validos existirem.
 - Nunca registrar tokens, credenciais, caminhos pessoais ou dados sensiveis.
 - Nao alterar arquivos do vendor sem necessidade explicita.
 

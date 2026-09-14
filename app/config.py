@@ -29,6 +29,11 @@ TEMP_DIR = (
     / "temp"
 )
 
+LIBRARY_DIR = (
+    ROOT
+    / "library"
+)
+
 LANGUAGE = "Portuguese"
 
 SAMPLE_RATE = 48000
