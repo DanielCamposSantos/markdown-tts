@@ -84,6 +84,9 @@ com manifesto `metadata.json` versionado e publicacao atomica dos artefatos.
 
 ## Fase 3 - Lifecycle persistente de jobs e fila
 
+**Status:** implementada. Jobs usam fila FIFO SQLite, claim atomico, worker unico,
+cancelamento cooperativo, heartbeat e recovery para `interrupted`.
+
 **Objetivo:** substituir threads ad hoc por fila persistente com uma unidade pesada por vez.
 
 **Motivacao:** o lock atual impede concorrencia pesada, mas nao oferece fila, cancelamento ou recuperacao.
@@ -105,6 +108,12 @@ com manifesto `metadata.json` versionado e publicacao atomica dos artefatos.
 **Rollback:** manter endpoint de geracao legado como modo unico; desativar fila nova sem apagar registros.
 
 **Nao mudar:** unidade de sintese, parametros MOSS ou audio anterior como contexto.
+
+### Fase 3.5 - Audio generation runaway guard
+
+**Status:** implementada. Um detector pre-decode conservador usa frames acusticos
+para rejeitar falhas de encerramento e repetir somente a SpeechUnit afetada. A
+tentativa original permanece inalterada; nao ha ASR nem duration forcing.
 
 ## Fase 4 - ModelManager e lifecycle GPU
 

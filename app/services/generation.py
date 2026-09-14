@@ -4,12 +4,14 @@ from pathlib import Path
 from typing import Any, Callable, Protocol
 
 from app.domain.models import GenerationProgress, GenerationResult
+from app.audio_generation_guard import GenerationCancelled
 from app.markdown_parser import parse_markdown
 from app.speech_plan import SpeechUnit, build_speech_plan
 
 
 ProgressCallback = Callable[[GenerationProgress], None]
 PlanCallback = Callable[[list[SpeechUnit]], None]
+CancelCheck = Callable[[], bool]
 
 
 class TtsEngine(Protocol):
@@ -18,6 +20,7 @@ class TtsEngine(Protocol):
         units: list[SpeechUnit],
         output_file: Path,
         progress_callback: Callable[[str, int, int, str], None] | None = None,
+        should_cancel: CancelCheck | None = None,
     ) -> GenerationResult: ...
 
 
@@ -40,6 +43,7 @@ class GenerationService:
         output_file: Path,
         progress_callback: ProgressCallback | None = None,
         plan_callback: PlanCallback | None = None,
+        should_cancel: CancelCheck | None = None,
     ) -> GenerationResult:
         blocks = parse_markdown(markdown)
         plan = build_speech_plan(blocks)
@@ -69,11 +73,14 @@ class GenerationService:
                     )
                 )
 
-        return self._engine.generate(
-            units=plan,
-            output_file=output_file,
-            progress_callback=report_progress,
-        )
+        arguments = {
+            "units": plan,
+            "output_file": output_file,
+            "progress_callback": report_progress,
+        }
+        if should_cancel is not None:
+            arguments["should_cancel"] = should_cancel
+        return self._engine.generate(**arguments)
 
     def generate_persisted(
         self,
@@ -85,6 +92,7 @@ class GenerationService:
         store: GenerationStore,
         progress_callback: ProgressCallback | None = None,
         plan_callback: PlanCallback | None = None,
+        should_cancel: CancelCheck | None = None,
     ) -> tuple[GenerationResult, Any]:
         units: list[SpeechUnit] = []
 
@@ -100,6 +108,7 @@ class GenerationService:
                 staging_file,
                 progress_callback=progress_callback,
                 plan_callback=capture_plan,
+                should_cancel=should_cancel,
             )
             stored = store.complete(
                 document,

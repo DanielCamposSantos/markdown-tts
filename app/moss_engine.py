@@ -33,6 +33,10 @@ from app.config import (
 )
 
 from app.domain.models import GenerationResult
+from app.audio_generation_guard import (
+    GenerationCancelled,
+    generate_with_runaway_guard,
+)
 
 from app.speech_plan import (
     SpeechUnit,
@@ -237,6 +241,7 @@ class MossEngine:
         self,
         model,
         unit: SpeechUnit,
+        seed: int | None = None,
     ):
         conversation = [
             [
@@ -271,10 +276,7 @@ class MossEngine:
             .to("cuda:0")
         )
 
-        set_seed(
-            BASE_SEED
-            + unit.index
-        )
+        set_seed(BASE_SEED + unit.index if seed is None else seed)
 
         with torch.inference_mode():
             output = model.generate(
@@ -371,6 +373,7 @@ class MossEngine:
         progress_callback:
             ProgressCallback
             | None = None,
+        should_cancel: Callable[[], bool] | None = None,
     ) -> GenerationResult:
         if not units:
             raise ValueError(
@@ -402,6 +405,8 @@ class MossEngine:
                 units,
                 start=1,
             ):
+                if should_cancel and should_cancel():
+                    raise GenerationCancelled("Geração cancelada.")
                 if progress_callback:
                     progress_callback(
                         "generation",
@@ -423,11 +428,16 @@ class MossEngine:
                     unit.display_text
                 )
 
-                output = (
-                    self._generate_unit(
-                        model,
-                        unit,
-                    )
+                output = generate_with_runaway_guard(
+                    unit=unit,
+                    generate_attempt=lambda seed: self._generate_unit(
+                        model, unit, seed=seed
+                    ),
+                    audio_pad_token_id=int(
+                        self.processor.model_config.audio_pad_token_id
+                    ),
+                    first_seed=BASE_SEED + unit.index,
+                    should_cancel=should_cancel,
                 )
 
                 generated_outputs.append(
@@ -475,6 +485,8 @@ class MossEngine:
                 generated_outputs,
                 start=1,
             ):
+                if should_cancel and should_cancel():
+                    raise GenerationCancelled("Geração cancelada.")
                 if progress_callback:
                     progress_callback(
                         "decode",
@@ -528,6 +540,9 @@ class MossEngine:
                 sample_rate,
             )
         )
+
+        if should_cancel and should_cancel():
+            raise GenerationCancelled("Geração cancelada.")
 
         if progress_callback:
             progress_callback(

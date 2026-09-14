@@ -43,7 +43,7 @@ outputs/<nome>_<job_id>.mp3 + player do navegador
 
 ### Backend
 
-`web.py` cria uma aplicacao FastAPI, serve a interface estatica e expoe o audio gerado. A geracao e iniciada em uma thread daemon. Um `generation_lock` permite somente uma geracao ativa por vez; os jobs ficam em um dicionario em memoria e sao consultados pelo frontend por polling a cada 500 ms.
+`web.py` cria uma aplicacao FastAPI, serve a interface e controla o lifecycle de um unico `JobWorker`. `POST /api/generate` enfileira jobs FIFO no SQLite; somente o worker executa TTS, uma geracao pesada por vez. O frontend consulta o estado persistido por polling a cada 500 ms.
 
 O modelo e inicializado sob demanda na primeira geracao por `MossEngine`. O processor e a codificacao da referencia permanecem no objeto global do engine durante a sessao. O modelo principal e carregado para a GPU para gerar as unidades e depois liberado; o audio tokenizer e movido para a GPU durante a codificacao/decodificacao quando necessario.
 
@@ -156,7 +156,8 @@ O nome informado pelo usuario e sanitizado para o titulo/download. Novas geracoe
 
 - `GET /` serve `static/index.html`.
 - `POST /api/plan` recebe `{ "markdown": "..." }` e retorna a quantidade de blocos e as unidades com `id`, `kind`, `text`, `previous_id` e `next_id`.
-- `POST /api/generate` recebe `{ "markdown": "...", "filename": "..." }` e retorna um `job_id`. Markdown vazio retorna HTTP 400; uma segunda geracao enquanto outra esta ativa retorna HTTP 409.
+- `POST /api/generate` recebe `{ "markdown": "...", "filename": "..." }`, persiste um job `queued` e retorna seu `job_id`.
+- `GET /api/jobs` lista a fila persistente; `POST /api/jobs/{job_id}/cancel` solicita cancelamento.
 - `GET /api/jobs/{job_id}` retorna estado, progresso, timeline e, ao concluir, a URL do audio.
 - `GET /api/download/{job_id}` envia o MP3 concluido como `audio/mpeg`.
 - `GET /audio/<arquivo>` serve diretamente os arquivos em `outputs/`.
@@ -189,6 +190,11 @@ Antes de retornar, o plano valida que o conteudo canonico foi preservado e que o
 
 Cada unidade e sintetizada de forma independente, sempre retornando a referencia canonica e o idioma `Portuguese`. O fluxo normal nao usa Continuation/context chaining, pois esse experimento causou deriva progressiva de pitch e prosodia.
 
+Antes do decode, um guard conservador estima a duracao pelos frames acusticos do
+MOSS (12,5 frames/s). Saidas claramente descontroladas sao descartadas e somente
+a unidade afetada e repetida, por no maximo duas vezes, com seeds alternativas
+deterministicas. A primeira tentativa e seus parametros permanecem inalterados.
+
 O modelo e carregado em BF16. As saidas de geracao sao movidas para CPU, decodificadas pelo audio tokenizer em FP32 na GPU e convertidas para audio float32 em CPU. As unidades sao concatenadas com silencio entre elas. A timeline registra, para cada unidade, `index`, `kind`, texto, `start_seconds`, `end_seconds` e `pause_after_ms`.
 
 O highlight usa esses timestamps reais do audio produzido; nao estima duracao pelo numero de caracteres. O futuro alinhamento palavra por palavra ainda nao existe.
@@ -217,8 +223,8 @@ Uma conversao indiscriminada do audio tokenizer inteiro para BF16 tambem nao e a
 
 - CUDA e a referencia de voz sao obrigatorios para a geracao atual; sem CUDA o engine falha ao inicializar.
 - E necessario ter FFmpeg no `PATH`.
-- Apenas uma geracao pode ocorrer por vez.
-- Nao ha cancelamento, fila de documentos, estimativa de duracao, retry automatico ou regeneracao individual.
+- Apenas uma geracao pesada ocorre por vez; outras permanecem na fila FIFO.
+- Ha cancelamento cooperativo entre unidades. Nao ha estimativa de duracao, retry automatico ou regeneracao individual.
 - Jobs sao mantidos somente em memoria e nao ha historico ou biblioteca.
 - A interface nao restaura posicao de leitura, nao oferece atalhos, anterior/proxima frase ou exportacao WAV.
 - Algumas siglas tecnicas, como `SYN`, `SYN-ACK`, `ACK`, `HTTPS` e `TLS`, podem exigir avaliacao pontual. O projeto nao aplica um grande dicionario fonetico.

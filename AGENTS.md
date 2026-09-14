@@ -22,7 +22,8 @@ Nao executar geracao TTS durante testes normais. Nao baixar pesos ou instalar pa
 
 ## Arquitetura atual
 
-- `web.py`: FastAPI, endpoints, jobs em memoria, thread daemon, locks e servidor em `127.0.0.1:7860`.
+- `web.py`: FastAPI, endpoints, lifecycle do worker e servidor em `127.0.0.1:7860`.
+- `app/jobs.py`: jobs persistentes, claim FIFO atomico, worker unico, cancelamento e recovery.
 - `app/markdown_parser.py`: Markdown CommonMark para blocos narraveis.
 - `app/speech_plan.py`: blocos para `SpeechUnit`, divisao em frases, pausas, validacao de conteudo e links `previous_id`/`next_id`.
 - `app/moss_engine.py`: processor, referencia vocal, geracao Direct TTS por unidade, decoder e montagem/exportacao.
@@ -45,6 +46,8 @@ O modelo e carregado sob demanda. O modelo principal usa BF16 na GPU; o audio to
 - Nao voltar a referencia vocal gerada em ingles.
 - Nao criar dicionario fonetico global agressivo. Overrides de pronuncia futuros devem ser pequenos, opcionais e aplicados somente a `synthesis_text`, mantendo `display_text`.
 - Nao alterar parametros metodologicos do MOSS sem autorizacao e validacao de qualidade.
+- Preservar o runaway guard pre-decode: primeira seed inalterada, no maximo tres
+  tentativas por unidade e retries somente com seeds alternativas deterministicas.
 
 ## Audio e Windows
 
@@ -66,6 +69,8 @@ Testes de MOSS, GPU, codec e qualidade de audio devem ficar separados, explicita
 - Usar escrita atomica para artefatos persistentes futuros.
 - Tratar SQLite como fonte de verdade; paths persistidos sao relativos a `library/`.
 - Nunca marcar uma geracao `completed` antes de audio e metadata validos existirem.
+- Somente `JobWorker` inicia TTS; jobs ativos abandonados viram `interrupted` no startup.
+- Cancelamento e cooperativo entre unidades; artefatos ja publicados permanecem `completed`.
 - Nunca registrar tokens, credenciais, caminhos pessoais ou dados sensiveis.
 - Nao alterar arquivos do vendor sem necessidade explicita.
 

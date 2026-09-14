@@ -41,10 +41,10 @@ def test_database_migration_v1_is_idempotent_and_reopens(tmp_path):
     database = Database(tmp_path / "data" / "library.db")
     database.initialize()
     database.initialize()
-    assert database.schema_version == 1
+    assert database.schema_version == 2
     reopened = Database(database.path)
     reopened.initialize()
-    assert reopened.schema_version == 1
+    assert reopened.schema_version == 2
     with reopened.connect() as connection:
         assert connection.execute("PRAGMA foreign_keys").fetchone()[0] == 1
         assert connection.execute("SELECT COUNT(*) FROM documents").fetchone()[0] == 0

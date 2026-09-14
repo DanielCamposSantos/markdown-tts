@@ -552,8 +552,8 @@ async function pollJob() {
         }
 
         if (
-            job.status ===
-            "error"
+            ["error", "failed", "cancelled"]
+                .includes(job.status)
         ) {
             throw new Error(
                 job.error

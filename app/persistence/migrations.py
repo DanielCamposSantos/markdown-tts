@@ -42,6 +42,34 @@ MIGRATIONS: tuple[tuple[int, str], ...] = (
             ON generations(document_id, created_at DESC);
         """,
     ),
+    (
+        2,
+        """
+        CREATE TABLE IF NOT EXISTS generation_jobs (
+            queue_sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id TEXT NOT NULL UNIQUE,
+            generation_id TEXT NOT NULL UNIQUE REFERENCES generations(generation_id),
+            document_id TEXT NOT NULL REFERENCES documents(document_id),
+            status TEXT NOT NULL CHECK (status IN (
+                'queued', 'running', 'cancelling', 'cancelled',
+                'completed', 'failed', 'interrupted'
+            )),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            started_at TEXT,
+            completed_at TEXT,
+            heartbeat_at TEXT,
+            error TEXT,
+            progress REAL NOT NULL DEFAULT 0,
+            phase TEXT NOT NULL DEFAULT 'queued',
+            current INTEGER NOT NULL DEFAULT 0,
+            total INTEGER NOT NULL DEFAULT 0,
+            message TEXT NOT NULL DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS generation_jobs_fifo
+            ON generation_jobs(status, queue_sequence);
+        """,
+    ),
 )
 
 

@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import re
 import threading
-import time
 import unicodedata
 import webbrowser
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -37,9 +37,9 @@ from app.speech_plan import (
     build_speech_plan,
 )
 
-from app.domain.models import GenerationProgress, JobStatus
 from app.services.generation import GenerationService
 from app.persistence import LibraryStore
+from app.jobs import JobRepository, JobWorker
 
 if TYPE_CHECKING:
     from app.services.generation import TtsEngine
@@ -56,9 +56,17 @@ INDEX_FILE = (
 )
 
 
-app = FastAPI(
-    title="Markdown TTS",
-)
+@asynccontextmanager
+async def lifespan(_app):
+    current_worker = get_worker()
+    current_worker.start()
+    try:
+        yield
+    finally:
+        current_worker.stop()
+
+
+app = FastAPI(title="Markdown TTS", lifespan=lifespan)
 
 
 app.mount(
@@ -95,25 +103,9 @@ class PlanRequest(
     markdown: str
 
 
-jobs: dict[
-    str,
-    dict,
-] = {}
-
-jobs_lock = (
-    threading.RLock()
-)
-
-generation_lock = (
-    threading.Lock()
-)
-
-engine_lock = (
-    threading.Lock()
-)
-
 engine: TtsEngine | None = None
 library_store: LibraryStore | None = None
+job_worker: JobWorker | None = None
 
 
 def get_engine() -> TtsEngine:
@@ -122,11 +114,9 @@ def get_engine() -> TtsEngine:
     if engine is not None:
         return engine
 
-    with engine_lock:
-        if engine is None:
-            from app.moss_engine import MossEngine
-
-            engine = MossEngine()
+    if engine is None:
+        from app.moss_engine import MossEngine
+        engine = MossEngine()
 
     return engine
 
@@ -136,6 +126,17 @@ def get_library() -> LibraryStore:
     if library_store is None:
         library_store = LibraryStore(LIBRARY_DIR)
     return library_store
+
+
+def get_worker() -> JobWorker:
+    global job_worker
+    library = get_library()
+    if job_worker is None or job_worker.library is not library:
+        job_worker = JobWorker(
+            library,
+            service_factory=lambda: GenerationService(get_engine()),
+        )
+    return job_worker
 
 
 def safe_filename(
@@ -176,126 +177,6 @@ def safe_filename(
         )
 
     return normalized[:80]
-
-
-def update_job(
-    job_id: str,
-    **values,
-) -> None:
-    with jobs_lock:
-        job = jobs.get(
-            job_id
-        )
-
-        if job is None:
-            return
-
-        job.update(
-            values
-        )
-
-
-def run_generation(
-    job_id: str,
-    markdown: str,
-    staging_file: Path,
-    final_file: Path,
-    document,
-    generation,
-    library: LibraryStore,
-) -> None:
-    try:
-        with generation_lock:
-            update_job(
-                job_id,
-                status=JobStatus.RUNNING.value,
-                message=(
-                    "Analisando Markdown..."
-                ),
-                progress=1.0,
-            )
-
-            def plan_callback(plan) -> None:
-                update_job(
-                    job_id,
-                    total_units=len(plan),
-                    message=f"{len(plan)} unidades de leitura.",
-                    progress=2.0,
-                )
-
-            def progress_callback(
-                progress: GenerationProgress,
-            ) -> None:
-                update_job(
-                    job_id,
-                    phase=progress.phase,
-                    current=progress.current,
-                    total_units=progress.total,
-                    message=progress.message,
-                    progress=progress.progress,
-                )
-
-            service = GenerationService(get_engine())
-            result, stored = service.generate_persisted(
-                markdown=markdown,
-                staging_file=staging_file,
-                final_file=final_file,
-                document=document,
-                generation=generation,
-                store=library,
-                progress_callback=progress_callback,
-                plan_callback=plan_callback,
-            )
-
-            timeline = [
-                entry.to_dict()
-                for entry
-                in result.timeline
-            ]
-
-            update_job(
-                job_id,
-                status=JobStatus.COMPLETED.value,
-                phase="completed",
-                progress=100.0,
-                message="Áudio pronto.",
-                timeline=timeline,
-                duration_seconds=(
-                    result.duration_seconds
-                ),
-                generation_seconds=(
-                    result.generation_seconds
-                ),
-                decode_seconds=(
-                    result.decode_seconds
-                ),
-                audio_url=(
-                    f"/api/generations/"
-                    f"{generation.generation_id}/audio"
-                ),
-                generation_id=generation.generation_id,
-                document_id=document.document_id,
-                output_file=str(library.resolve(stored.audio_path)),
-                completed_at=time.time(),
-            )
-
-    except Exception as exc:
-        print()
-        print(
-            "ERRO NA GERAÇÃO:"
-        )
-
-        print(
-            repr(exc)
-        )
-
-        update_job(
-            job_id,
-            status=JobStatus.ERROR.value,
-            phase="error",
-            message=str(exc),
-            error=str(exc),
-        )
 
 
 @app.get("/")
@@ -374,78 +255,21 @@ def generate(
             ),
         )
 
-    with jobs_lock:
-        has_active_job = any(
-            job.get("status")
-            in {
-                "queued",
-                "running",
-            }
-            for job
-            in jobs.values()
-        )
-
-    if has_active_job:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                "Já existe uma geração "
-                "em andamento."
-            ),
-        )
-
     stem = safe_filename(
         request.filename
     )
     library = get_library()
-    document, generation_record, staging_file, final_file = library.create(
+    document, generation_record, _, _ = library.create(
         stem,
         markdown,
     )
-    job_id = generation_record.generation_id
-
-    with jobs_lock:
-        jobs[job_id] = {
-            "id": job_id,
-            "status": JobStatus.QUEUED.value,
-            "phase": "queued",
-            "progress": 0.0,
-            "message": (
-                "Aguardando início..."
-            ),
-            "current": 0,
-            "total_units": 0,
-            "timeline": [],
-            "audio_url": None,
-            "output_file": (
-                str(final_file)
-            ),
-            "download_name": (
-                f"{stem}.mp3"
-            ),
-            "created_at": (
-                time.time()
-            ),
-        }
-
-    thread = threading.Thread(
-        target=run_generation,
-        args=(
-            job_id,
-            markdown,
-            staging_file,
-            final_file,
-            document,
-            generation_record,
-            library,
-        ),
-        daemon=True,
+    job = JobRepository(library.database).enqueue(
+        generation_record.generation_id, document.document_id
     )
-
-    thread.start()
+    get_worker().wake()
 
     return {
-        "job_id": job_id,
+        "job_id": job.job_id,
     }
 
 
@@ -533,26 +357,43 @@ def persisted_download(generation_id: str):
 def job_status(
     job_id: str,
 ):
-    with jobs_lock:
-        job = jobs.get(
-            job_id
-        )
+    job = JobRepository(get_library().database).get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Geração não encontrada.")
+    payload = job.to_dict()
+    payload["id"] = job.job_id
+    payload["total_units"] = job.total
+    payload["timeline"] = []
+    payload["audio_url"] = None
+    generation = get_library().generations.get(job.generation_id)
+    if job.status == "completed" and generation:
+        metadata = get_library().metadata(generation)
+        payload["timeline"] = metadata["timeline"]
+        payload["audio_url"] = f"/api/generations/{job.generation_id}/audio"
+        payload["duration_seconds"] = generation.duration_seconds
+        payload["generation_seconds"] = generation.generation_seconds
+        payload["decode_seconds"] = generation.decode_seconds
+    return payload
 
-        if job is None:
-            raise HTTPException(
-                status_code=404,
-                detail=(
-                    "Geração não encontrada."
-                ),
-            )
 
-        return {
-            key: value
-            for key, value
-            in job.items()
-            if key
-            != "output_file"
-        }
+@app.get("/api/jobs")
+def list_jobs():
+    return {"jobs": [job_status(job.job_id) for job in JobRepository(get_library().database).list()]}
+
+
+@app.post("/api/jobs/{job_id}/cancel")
+def cancel_job(job_id: str):
+    repository = JobRepository(get_library().database)
+    try:
+        job = repository.request_cancel(job_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Geração não encontrada.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if job.status == "cancelled":
+        get_library().mark_failed(job.generation_id, "Geração cancelada antes do início.")
+    get_worker().wake()
+    return job_status(job.job_id)
 
 
 @app.get(
@@ -561,59 +402,12 @@ def job_status(
 def download(
     job_id: str,
 ):
-    with jobs_lock:
-        job = jobs.get(
-            job_id
-        )
-
-        if job is None:
-            raise HTTPException(
-                status_code=404,
-                detail=(
-                    "Geração não encontrada."
-                ),
-            )
-
-        if (
-            job.get("status")
-            != "completed"
-        ):
-            raise HTTPException(
-                status_code=409,
-                detail=(
-                    "O áudio ainda não "
-                    "está pronto."
-                ),
-            )
-
-        path = Path(
-            job[
-                "output_file"
-            ]
-        )
-
-        filename = (
-            job[
-                "download_name"
-            ]
-        )
-
-    if not path.exists():
-        raise HTTPException(
-            status_code=404,
-            detail=(
-                "Arquivo de áudio "
-                "não encontrado."
-            ),
-        )
-
-    return FileResponse(
-        path=path,
-        media_type=(
-            "audio/mpeg"
-        ),
-        filename=filename,
-    )
+    job = JobRepository(get_library().database).get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Geração não encontrada.")
+    if job.status != "completed":
+        raise HTTPException(status_code=409, detail="O áudio ainda não está pronto.")
+    return persisted_download(job.generation_id)
 
 
 if __name__ == "__main__":

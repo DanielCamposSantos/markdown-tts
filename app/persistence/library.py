@@ -120,7 +120,14 @@ class LibraryStore:
     def mark_failed(self, generation_id: str, error: str) -> None:
         record = self.generations.get(generation_id)
         if record and record.status in {"queued", "running"}:
-            self.generations.transition(generation_id, "failed", utc_now(), error)
+            self.generations.transition(
+                generation_id, "failed", utc_now(), self.sanitize_error(error)
+            )
+
+    def sanitize_error(self, error: str) -> str:
+        return str(error).replace(str(self.root), "<library>").replace(
+            str(self.voice_reference), "voices/narrator_reference.wav"
+        )[:1000]
 
     def complete(self, document, generation, staging_audio: Path, final_audio: Path, result, units) -> GenerationRecord:
         if not staging_audio.is_file() or staging_audio.stat().st_size == 0:
