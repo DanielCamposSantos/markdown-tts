@@ -33,7 +33,15 @@ def test_fake_benchmark_calculates_rtf_summary_and_writes_reports(tmp_path):
     })
     report = run_benchmark(cases, engine, metrics=lambda: {"ram_mb": 12.5, "vram_mb": None})
     assert report.entries[0].real_time_factor == 0.5
-    assert report.summary == {"cases": 2, "status_counts": {"pass": 1, "warn": 0, "fail": 1}, "mean_rtf": 0.375}
+    assert report.summary == {
+        "cases": 2,
+        "status_counts": {"pass": 1, "warn": 0, "fail": 1},
+        "mean_rtf": 0.375,
+        "median_rtf": 0.375,
+        "total_audio_seconds": 6.0,
+        "total_processing_seconds": 2.0,
+        "total_rtf": 1 / 3,
+    }
     assert report.entries[0].ram_mb == 12.5 and report.entries[0].vram_mb is None
     assert report.entries[0].transcription == "Texto exato"
     json_path, csv_path = tmp_path / "report.json", tmp_path / "report.csv"

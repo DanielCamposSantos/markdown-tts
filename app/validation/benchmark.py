@@ -4,6 +4,7 @@ import csv
 import json
 import math
 import os
+import statistics
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -38,6 +39,8 @@ class BenchmarkEntry:
     vram_mb: float | None = None
     transcription: str = ""
     reasons: tuple[str, ...] = ()
+    missing_tokens: tuple[str, ...] = ()
+    extra_tokens: tuple[str, ...] = ()
     error: str | None = None
 
 
@@ -121,13 +124,21 @@ def run_benchmark(
             vram_mb=resource.get("vram_mb"),
             transcription=validation.transcription,
             reasons=validation.reasons,
+            missing_tokens=validation.missing_tokens,
+            extra_tokens=validation.extra_tokens,
         ))
     counts = {status: sum(entry.status == status for entry in entries) for status in ("pass", "warn", "fail")}
     valid_rtfs = [entry.real_time_factor for entry in entries if entry.real_time_factor is not None]
+    total_audio = sum(entry.audio_duration_seconds for entry in entries)
+    total_processing = sum(entry.processing_seconds or 0.0 for entry in entries)
     summary = {
         "cases": len(entries),
         "status_counts": counts,
         "mean_rtf": sum(valid_rtfs) / len(valid_rtfs) if valid_rtfs else None,
+        "median_rtf": statistics.median(valid_rtfs) if valid_rtfs else None,
+        "total_audio_seconds": total_audio,
+        "total_processing_seconds": total_processing,
+        "total_rtf": total_processing / total_audio if total_audio > 0 else None,
     }
     return BenchmarkReport(tuple(entries), summary)
 

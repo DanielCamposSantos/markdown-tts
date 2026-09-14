@@ -25,3 +25,5 @@ voices/*.wav
 
 benchmarks/models/
 benchmarks/results/
+benchmarks/audio/*.wav
+benchmarks/audio/manifest.json

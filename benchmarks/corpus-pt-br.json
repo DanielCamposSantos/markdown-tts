@@ -1,5 +1,10 @@
 {
   "schema_version": 1,
+  "pronunciation_requirements": {
+    "cplusplus": "Futuro override explícito somente em synthesis_text: C mais mais.",
+    "initialisms_pt_br": "Futura leitura letra por letra em português, com ritmo contínuo e sem pausas artificiais.",
+    "scope": "Preservar display_text e não generalizar para toda sequência maiúscula sem projeto e testes."
+  },
   "cases": [
     {"id": "cotidiano", "category": "portuguese", "audio_path": "audio/cotidiano.wav", "duration_seconds": 3.0, "expected_text": "Hoje o céu está claro e a praça está tranquila."},
     {"id": "frase-longa", "category": "long", "audio_path": "audio/frase-longa.wav", "duration_seconds": 8.0, "expected_text": "Durante a revisão, organize os conceitos principais, compare os exemplos e registre as dúvidas para estudar novamente mais tarde."},

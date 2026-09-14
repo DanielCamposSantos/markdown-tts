@@ -21,6 +21,24 @@ from app.validation.asr import FasterWhisperAsrEngine
 from app.validation.benchmark import load_corpus, run_benchmark, write_csv_report, write_json_report
 
 
+def load_good_cases(corpus_path: Path, manifest_path: Path):
+    cases = load_corpus(corpus_path)
+    manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+    entries = {entry["case_id"]: entry for entry in manifest["fixtures"]}
+    good = []
+    excluded = []
+    for case in cases:
+        entry = entries.get(case.case_id)
+        status = entry.get("review_status") if entry else "MISSING"
+        if status == "GOOD":
+            good.append(replace(case, duration_seconds=float(entry["duration_seconds"])))
+        else:
+            excluded.append({"case_id": case.case_id, "review_status": status})
+    if not good:
+        raise ValueError("o manifesto não contém fixtures com review_status=GOOD")
+    return tuple(good), tuple(excluded)
+
+
 def _server_is_running() -> bool:
     with socket.socket() as probe:
         probe.settimeout(0.25)
@@ -68,8 +86,16 @@ def _vram_mb() -> float | None:
             try:
                 return float(fields[1])
             except ValueError:
-                return None
-    return 0.0
+                break
+    try:
+        total = subprocess.check_output(
+            ["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip().splitlines()[0]
+        return float(total)
+    except (OSError, subprocess.SubprocessError, ValueError, IndexError):
+        return None
 
 
 def main() -> int:
@@ -77,12 +103,16 @@ def main() -> int:
     parser.add_argument("--model-path", type=Path, required=True)
     parser.add_argument("--compute-type", choices=("float16", "int8_float16"), required=True)
     parser.add_argument("--corpus", type=Path, default=ROOT / "benchmarks" / "corpus-pt-br.json")
+    parser.add_argument("--manifest", type=Path, default=ROOT / "benchmarks" / "audio" / "manifest.json")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if _server_is_running():
         parser.error("o servidor Markdown TTS deve estar parado (porta 7860 ocupada)")
 
-    cases = load_corpus(args.corpus)
+    try:
+        cases, excluded = load_good_cases(args.corpus, args.manifest)
+    except (OSError, ValueError, KeyError, json.JSONDecodeError) as exc:
+        parser.error(f"manifesto acústico inválido: {exc}")
     missing = [str(case.audio_path) for case in cases if not case.audio_path.is_file()]
     if missing:
         parser.error("áudios neutros ausentes:\n" + "\n".join(missing))
@@ -92,11 +122,18 @@ def main() -> int:
     load_seconds = engine.load()
     loaded = {"ram_mb": _ram_mb(), "vram_mb": _vram_mb()}
     report = run_benchmark(cases, engine, metrics=lambda: {"ram_mb": _ram_mb(), "vram_mb": _vram_mb()})
+    after_transcription = {"ram_mb": _ram_mb(), "vram_mb": _vram_mb()}
     metadata_payload = {
         "backend": "faster-whisper", "backend_version": metadata.version("faster-whisper"),
         "model": args.model_path.name, "compute_type": args.compute_type, "device": "cuda",
         "language": "pt", "beam_size": 5, "batch_size": 1, "vad_filter": False,
         "load_seconds": load_seconds, "memory_before": before, "memory_loaded": loaded,
+        "memory_after_transcription": after_transcription,
+        "good_fixture_count": len(cases),
+        "excluded_fixtures": [
+            {**item, "status": "SKIPPED", "reason": "blocked_pronunciation" if item["review_status"] == "BLOCKED_PRONUNCIATION" else "not_human_approved"}
+            for item in excluded
+        ],
     }
     engine.unload()
     gc.collect()

@@ -280,6 +280,13 @@ integracao opt-in — permanece pendente; nenhum ASR real integra a geracao.
 
 **Objetivo:** tratar poucas expressoes comprovadamente problematicas.
 
+**Evidencia acustica:** o corpus neutro confirmou falhas sistematicas em `C++`,
+`HTTPS`/`TLS` e `SYN`/`SYN-ACK`/`ACK`. A futura camada deve permitir o override
+explicito `C++ -> C mais mais` e spelling de siglas letra por letra em PT-BR,
+preservando ritmo continuo, sem pausas artificiais. Essas transformacoes devem
+atuar somente em `synthesis_text`; `display_text` permanece original. Nao
+generalizar para toda sequencia maiuscula antes de projeto e testes dedicados.
+
 **Motivacao:** siglas como SYN, SYN-ACK, ACK, HTTPS e TLS podem falhar ocasionalmente, mas substituicoes agressivas prejudicam naturalidade.
 
 **Dependencias:** Fase 0; evidencia de testes de audio e, preferencialmente, Fase 9.
