@@ -3,7 +3,6 @@ from __future__ import annotations
 import gc
 import random
 import time
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
@@ -33,6 +32,8 @@ from app.config import (
     REFERENCE_AUDIO,
 )
 
+from app.domain.models import GenerationResult
+
 from app.speech_plan import (
     SpeechUnit,
 )
@@ -42,22 +43,6 @@ ProgressCallback = Callable[
     [str, int, int, str],
     None,
 ]
-
-
-@dataclass(frozen=True)
-class GenerationResult:
-    output_file: Path
-
-    duration_seconds: float
-
-    generation_seconds: float
-
-    decode_seconds: float
-
-    timeline: tuple[
-        AudioTimelineEntry,
-        ...
-    ]
 
 
 def cleanup_cuda() -> None:

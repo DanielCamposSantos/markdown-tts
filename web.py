@@ -6,8 +6,8 @@ import time
 import unicodedata
 import uuid
 import webbrowser
-from dataclasses import asdict
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import uvicorn
 from fastapi import (
@@ -33,13 +33,15 @@ from app.markdown_parser import (
     parse_markdown,
 )
 
-from app.moss_engine import (
-    MossEngine,
-)
-
 from app.speech_plan import (
     build_speech_plan,
 )
+
+from app.domain.models import GenerationProgress, JobStatus
+from app.services.generation import GenerationService
+
+if TYPE_CHECKING:
+    from app.services.generation import TtsEngine
 
 
 STATIC_DIR = (
@@ -109,10 +111,10 @@ engine_lock = (
     threading.Lock()
 )
 
-engine: MossEngine | None = None
+engine: TtsEngine | None = None
 
 
-def get_engine() -> MossEngine:
+def get_engine() -> TtsEngine:
     global engine
 
     if engine is not None:
@@ -120,6 +122,8 @@ def get_engine() -> MossEngine:
 
     with engine_lock:
         if engine is None:
+            from app.moss_engine import MossEngine
+
             engine = MossEngine()
 
     return engine
@@ -165,42 +169,6 @@ def safe_filename(
     return normalized[:80]
 
 
-def progress_percentage(
-    phase: str,
-    current: int,
-    total: int,
-) -> float:
-    total = max(
-        total,
-        1,
-    )
-
-    ratio = (
-        current
-        / total
-    )
-
-    if phase == "model":
-        return 3.0
-
-    if phase == "generation":
-        return (
-            5.0
-            + ratio * 72.0
-        )
-
-    if phase == "decode":
-        return (
-            77.0
-            + ratio * 18.0
-        )
-
-    if phase == "export":
-        return 98.0
-
-    return 0.0
-
-
 def update_job(
     job_id: str,
     **values,
@@ -227,79 +195,50 @@ def run_generation(
         with generation_lock:
             update_job(
                 job_id,
-                status="running",
+                status=JobStatus.RUNNING.value,
                 message=(
                     "Analisando Markdown..."
                 ),
                 progress=1.0,
             )
 
-            blocks = parse_markdown(
-                markdown
-            )
-
-            plan = build_speech_plan(
-                blocks
-            )
-
-            if not plan:
-                raise RuntimeError(
-                    "O Markdown não contém "
-                    "texto narrável."
+            def plan_callback(plan) -> None:
+                update_job(
+                    job_id,
+                    total_units=len(plan),
+                    message=f"{len(plan)} unidades de leitura.",
+                    progress=2.0,
                 )
 
-            update_job(
-                job_id,
-                total_units=len(
-                    plan
-                ),
-                message=(
-                    f"{len(plan)} "
-                    "unidades de leitura."
-                ),
-                progress=2.0,
-            )
-
             def progress_callback(
-                phase: str,
-                current: int,
-                total: int,
-                message: str,
+                progress: GenerationProgress,
             ) -> None:
                 update_job(
                     job_id,
-                    phase=phase,
-                    current=current,
-                    total_units=total,
-                    message=message,
-                    progress=(
-                        progress_percentage(
-                            phase,
-                            current,
-                            total,
-                        )
-                    ),
+                    phase=progress.phase,
+                    current=progress.current,
+                    total_units=progress.total,
+                    message=progress.message,
+                    progress=progress.progress,
                 )
 
-            tts = get_engine()
-
-            result = tts.generate(
-                units=plan,
+            service = GenerationService(get_engine())
+            result = service.generate(
+                markdown=markdown,
                 output_file=output_file,
-                progress_callback=(
-                    progress_callback
-                ),
+                progress_callback=progress_callback,
+                plan_callback=plan_callback,
             )
 
             timeline = [
-                asdict(entry)
+                entry.to_dict()
                 for entry
                 in result.timeline
             ]
 
             update_job(
                 job_id,
-                status="completed",
+                status=JobStatus.COMPLETED.value,
                 phase="completed",
                 progress=100.0,
                 message="Áudio pronto.",
@@ -332,7 +271,7 @@ def run_generation(
 
         update_job(
             job_id,
-            status="error",
+            status=JobStatus.ERROR.value,
             phase="error",
             message=str(exc),
             error=str(exc),
@@ -460,7 +399,7 @@ def generate(
     with jobs_lock:
         jobs[job_id] = {
             "id": job_id,
-            "status": "queued",
+            "status": JobStatus.QUEUED.value,
             "phase": "queued",
             "progress": 0.0,
             "message": (

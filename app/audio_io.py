@@ -2,31 +2,20 @@ from __future__ import annotations
 
 import subprocess
 import tempfile
-from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 import soundfile as sf
 import torch
 
+from app.domain.models import TimelineEntry
+
 from app.config import (
     MP3_BITRATE,
 )
 
 
-@dataclass(frozen=True)
-class AudioTimelineEntry:
-    index: int
-
-    kind: str
-
-    text: str
-
-    start_seconds: float
-
-    end_seconds: float
-
-    pause_after_ms: int
+AudioTimelineEntry = TimelineEntry
 
 
 def as_audio_tensor(
