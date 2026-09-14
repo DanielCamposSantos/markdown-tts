@@ -1,0 +1,25 @@
+@'
+.venv/
+vendor/
+
+__pycache__/
+*.py[cod]
+
+outputs/
+temp/
+
+.cache/
+.pytest_cache/
+
+*.log
+*.mp3
+
+.env
+
+.vscode/
+.idea/
+
+voices/ptbr_candidates/
+voices/*.wav
+!voices/narrator_reference.wav
+'@ | Set-Content ".gitignore" -Encoding UTF8

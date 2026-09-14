@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>Markdown TTS</title>
+
+    <link
+        rel="stylesheet"
+        href="/static/style.css"
+    >
+</head>
+
+<body>
+
+<header class="topbar">
+    <div class="brand">
+        <div class="brand-mark">
+            M
+        </div>
+
+        <div>
+            <h1>Markdown TTS</h1>
+
+            <p>
+                MOSS-TTS Local · Narrador PT-BR
+            </p>
+        </div>
+    </div>
+
+    <div class="engine-status">
+        <span class="status-dot"></span>
+        Local
+    </div>
+</header>
+
+
+<main class="workspace">
+
+    <section class="editor-panel panel">
+
+        <div class="panel-header">
+            <div>
+                <span class="eyebrow">
+                    Documento
+                </span>
+
+                <h2>Markdown</h2>
+            </div>
+
+            <span
+                id="unitCount"
+                class="counter"
+            >
+                0 frases
+            </span>
+        </div>
+
+
+        <input
+            id="filename"
+            class="filename-input"
+            type="text"
+            value="narracao"
+            placeholder="Nome do arquivo"
+        >
+
+
+        <textarea
+            id="markdownInput"
+            spellcheck="false"
+            placeholder="# Título
+
+Cole seu Markdown aqui.
+
+O texto será dividido em frases mantendo títulos, parágrafos e listas."
+        ></textarea>
+
+
+        <button
+            id="generateButton"
+            class="primary-button"
+        >
+            Gerar áudio
+        </button>
+
+    </section>
+
+
+    <section class="reader-panel panel">
+
+        <div class="panel-header">
+            <div>
+                <span class="eyebrow">
+                    Leitura
+                </span>
+
+                <h2>
+                    Estrutura de fala
+                </h2>
+            </div>
+        </div>
+
+
+        <div
+            id="reader"
+            class="reader empty-reader"
+        >
+            <div class="empty-state">
+                <div class="empty-icon">
+                    ¶
+                </div>
+
+                <strong>
+                    Aguardando Markdown
+                </strong>
+
+                <p>
+                    As frases que serão narradas
+                    aparecerão aqui.
+                </p>
+            </div>
+        </div>
+
+    </section>
+
+</main>
+
+
+<section
+    id="generationCard"
+    class="generation-card hidden"
+>
+    <div class="generation-info">
+        <div>
+            <span class="eyebrow">
+                Processamento
+            </span>
+
+            <strong
+                id="progressMessage"
+            >
+                Preparando...
+            </strong>
+        </div>
+
+        <span
+            id="progressPercent"
+            class="progress-percent"
+        >
+            0%
+        </span>
+    </div>
+
+    <div class="progress-track">
+        <div
+            id="progressBar"
+            class="progress-bar"
+        ></div>
+    </div>
+</section>
+
+
+<section
+    id="playerDock"
+    class="player-dock hidden"
+>
+    <div class="player-main">
+
+        <audio
+            id="audioPlayer"
+            preload="metadata"
+        ></audio>
+
+
+        <button
+            id="playButton"
+            class="round-button"
+            aria-label="Reproduzir"
+        >
+            ▶
+        </button>
+
+
+        <div class="player-center">
+
+            <div class="time-row">
+                <span id="currentTime">
+                    0:00
+                </span>
+
+                <span id="duration">
+                    0:00
+                </span>
+            </div>
+
+
+            <input
+                id="seekBar"
+                class="seek-bar"
+                type="range"
+                min="0"
+                max="1000"
+                value="0"
+            >
+
+        </div>
+
+
+        <select
+            id="speedSelect"
+            class="speed-select"
+            aria-label="Velocidade"
+        >
+            <option value="0.75">
+                0.75x
+            </option>
+
+            <option value="1">
+                1x
+            </option>
+
+            <option value="1.25">
+                1.25x
+            </option>
+
+            <option value="1.5">
+                1.5x
+            </option>
+
+            <option value="1.75">
+                1.75x
+            </option>
+
+            <option value="2">
+                2x
+            </option>
+        </select>
+
+
+        <a
+            id="downloadButton"
+            class="download-button"
+            href="#"
+        >
+            Baixar MP3
+        </a>
+
+    </div>
+</section>
+
+
+<script
+    src="/static/app.js"
+></script>
+
+</body>
+</html>
