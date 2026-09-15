@@ -308,6 +308,31 @@ A geracao real exige CUDA, os pesos do MOSS e varios gigabytes de VRAM. Testes f
 
 O snapshot funcional do MVP esta registrado no historico Git. Mudancas no modelo, na referencia vocal, no idioma, no modo Direct TTS ou no uso de contexto devem ser tratadas como mudancas de qualidade e avaliadas separadamente.
 
+## Manutencao, integridade e backup
+
+A referencia vocal possui manifesto SHA-256 versionado. Uma referencia ausente,
+alterada ou ilegivel bloqueia novas geracoes e regeneracoes, sem impedir consulta,
+playback ou download e sem tentar reparo ou voz alternativa.
+
+```powershell
+.\.venv\Scripts\python.exe -m app.maintenance retention-scan
+.\.venv\Scripts\python.exe -m app.maintenance cleanup-safe
+.\.venv\Scripts\python.exe -m app.maintenance cleanup-safe --apply
+.\.venv\Scripts\python.exe -m app.maintenance backup
+.\.venv\Scripts\python.exe -m app.maintenance verify-backup .\backups\backup-TIMESTAMP
+.\.venv\Scripts\python.exe -m app.maintenance restore .\backups\backup-TIMESTAMP --apply
+```
+
+Cleanup e dry-run por padrao. Restore valida hashes e SQLite, recusa jobs ativos,
+cria backup de seguranca e nao restaura a voz sem `--restore-voice`. Backups
+incluem SQLite, artefatos publicados referenciados, documentos, metadata, WAVs de
+unidade, voz/manifesto e fontes essenciais de schema/pronuncia; excluem `.venv`,
+Git, caches, modelos e corpus/resultados de benchmark.
+
+Documentos, SQLite e publicados sao autoridade; a voz e ativo protegido; staging
+conhecido e antigo e descartavel. Fixtures, benchmarks, modelos e ferramentas sao
+artefatos de desenvolvimento. Desconhecidos e geracoes legacy sao preservados.
+
 ## Roadmap
 
 A evolucao planejada deve acontecer em fases pequenas, sempre preservando o comportamento e a qualidade atuais:

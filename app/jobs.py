@@ -251,6 +251,7 @@ class JobWorker:
         generation = self.library.generations.get(job.generation_id)
         document = self.library.documents.get(job.document_id)
         try:
+            self.library.require_voice_integrity()
             tracker = ProgressTracker(
                 lambda progress: self.repository.update_progress(job.job_id, progress),
                 operation=job.operation,

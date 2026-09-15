@@ -37,7 +37,7 @@ def file_sha256(path: Path) -> str:
 
 
 class LibraryStore:
-    def __init__(self, root: Path, voice_reference: Path = REFERENCE_AUDIO) -> None:
+    def __init__(self, root: Path, voice_reference: Path = REFERENCE_AUDIO, voice_integrity=None) -> None:
         self.root = Path(root).resolve()
         self.voice_reference = Path(voice_reference)
         self.database = Database(self.root / "library.db")
@@ -46,6 +46,11 @@ class LibraryStore:
         self.generations = GenerationRepository(self.database)
         self.playback = PlaybackRepository(self.database)
         self._voice_sha256: str | None = None
+        self.voice_integrity = voice_integrity
+
+    def require_voice_integrity(self) -> None:
+        if self.voice_integrity is not None:
+            self.voice_integrity.require_healthy()
 
     def _relative(self, path: Path) -> str:
         resolved = path.resolve()
@@ -81,6 +86,7 @@ class LibraryStore:
         return self._voice_sha256
 
     def create(self, title: str, markdown: str) -> tuple[DocumentRecord, GenerationRecord, Path, Path]:
+        self.require_voice_integrity()
         document_id = uuid.uuid4().hex
         generation_id = uuid.uuid4().hex
         now = utc_now()

@@ -47,6 +47,7 @@ from app.domain.models import PlaybackState
 from app.persistence.library import utc_now
 from app.playback import active_unit_at, unit_id
 from app.markdown_preview import MAX_MARKDOWN_INPUT_BYTES, render_markdown_preview
+from app.maintenance.voice_integrity import VoiceIntegrityService
 
 if TYPE_CHECKING:
     from app.services.generation import TtsEngine
@@ -65,6 +66,7 @@ INDEX_FILE = (
 
 @asynccontextmanager
 async def lifespan(_app):
+    get_voice_integrity().check()
     current_manager = get_model_manager()
     current_manager.start()
     current_worker = get_worker()
@@ -127,6 +129,17 @@ engine: TtsEngine | None = None
 model_manager: ModelManager | None = None
 library_store: LibraryStore | None = None
 job_worker: JobWorker | None = None
+voice_integrity_service: VoiceIntegrityService | None = None
+
+
+def get_voice_integrity() -> VoiceIntegrityService:
+    global voice_integrity_service
+    if voice_integrity_service is None:
+        voice_integrity_service = VoiceIntegrityService(
+            ROOT / "voices" / "narrator_reference.wav",
+            ROOT / "voices" / "narrator_reference.manifest.json",
+        )
+    return voice_integrity_service
 
 
 def get_engine() -> TtsEngine:
@@ -162,7 +175,7 @@ def get_model_manager() -> ModelManager:
 def get_library() -> LibraryStore:
     global library_store
     if library_store is None:
-        library_store = LibraryStore(LIBRARY_DIR)
+        library_store = LibraryStore(LIBRARY_DIR, voice_integrity=get_voice_integrity())
     return library_store
 
 
@@ -179,7 +192,7 @@ def get_worker() -> JobWorker:
 
 @app.get("/api/model/status")
 def model_status():
-    return get_model_manager().status()
+    return {**get_model_manager().status(), "voice_integrity": get_voice_integrity().check().to_dict()}
 
 
 def safe_filename(

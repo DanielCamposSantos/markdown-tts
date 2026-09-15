@@ -59,6 +59,7 @@ class RegenerationService:
         progress_callback=None,
         should_cancel: Callable[[], bool] | None = None,
     ) -> int:
+        library.require_voice_integrity()
         generation = library.generations.get(generation_id)
         if generation is None:
             raise KeyError(generation_id)

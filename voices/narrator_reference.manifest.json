@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "path": "voices/narrator_reference.wav",
+  "sha256": "af7a01c5d4d572372a7e6e46e6b6a6ee6984a250668e0477c9f89e8304f82fb8",
+  "size_bytes": 5606444,
+  "format": "WAV",
+  "subtype": "PCM_16",
+  "sample_rate": 48000,
+  "channels": 2,
+  "minimum_frames": 1
+}

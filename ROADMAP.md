@@ -311,6 +311,10 @@ continua sendo `ípsilon`.
 
 ## Fase 11 - Retencao, backup e integridade
 
+**Estado:** concluida. Integridade vocal fail-closed para novas sinteses, cleanup
+manual/dry-run restrito a staging conhecido, backup SQLite consistente com
+manifesto e restore transacional via CLI foram implementados.
+
 **Objetivo:** controlar armazenamento e proteger a referencia vocal.
 
 **Motivacao:** audio e documentos podem crescer e o ativo vocal nao pode ser perdido.
@@ -330,6 +334,9 @@ continua sendo `ípsilon`.
 **Rollback:** modo somente relatorio e desativar limpeza automatica.
 
 **Nao mudar:** conteudo do WAV.
+
+O Final Cleanup / Release Audit permanece adiado para depois da Fase 14; fixtures,
+modelos e diagnosticos necessarios as fases restantes devem ser preservados.
 
 ## Fase 12 - Reprodutibilidade e compatibilidade
 

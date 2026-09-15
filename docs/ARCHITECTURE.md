@@ -313,6 +313,19 @@ A politica deve ser configuravel: manter tudo, manter ultimos N documentos/gerac
 
 Na inicializacao, validar existencia, formato basico e SHA-256 esperado da referencia quando configurado. O checksum e o identificador da referencia no metadata, nao um mecanismo para modificar o arquivo. Backups devem ser externos ao ciclo de limpeza e documentados.
 
+## CURRENT: manutencao segura
+
+`app/maintenance/` separa integridade vocal, retencao e backup/restore. A voz e
+comparada ao manifesto e validada via `soundfile`. A retencao reconhece somente
+staging conhecido, exige 24 horas, ausencia de job ativo e confinamento real na
+biblioteca; publicados, legacy, desconhecidos e symlinks sao preservados.
+
+O backup usa a API SQLite e os paths da fotografia do banco para copiar somente
+artefatos autoritativos. Seu manifesto registra schema, contagens, identidade da
+voz, tamanhos e hashes, e a verificacao executa `PRAGMA quick_check`. Restore e
+CLI: verifica, recusa jobs ativos, cria backup de seguranca, prepara em staging e
+faz swap com rollback. A voz exige autorizacao separada.
+
 ## TARGET: dependencias e testes
 
 `environment-current.txt` deve continuar sendo tratado como evidencia do ambiente atual. Uma futura estrategia de pinning deve separar dependencias diretas da aplicacao, wheel de PyTorch/CUDA, versoes de Transformers/Hugging Face Hub, `markdown-it-py`, FastAPI, Uvicorn e `soundfile`, alem da revisao dos remote-code files MOSS.
