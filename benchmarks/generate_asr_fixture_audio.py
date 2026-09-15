@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import replace
 import hashlib
 import json
 import os
@@ -75,6 +76,7 @@ def generate_fixtures(
     from app.audio_io import write_unit_wav
     from app.config import BASE_SEED, LANGUAGE, MODEL_ID, REFERENCE_AUDIO
     from app.moss_engine import MossEngine, cleanup_cuda
+    from app.pronunciation import PT_BR_RESOLVER
     from app.speech_plan import SpeechUnit
 
     previous_manifest = _existing_manifest()
@@ -95,22 +97,24 @@ def generate_fixtures(
                 source_atoms=(case["expected_text"],),
                 pause_after_ms=0,
             )
+            pronunciation = PT_BR_RESOLVER.resolve(unit.synthesis_text)
+            effective_unit = replace(unit, synthesis_text=pronunciation.synthesis_text)
             seeds = []
             messages = []
 
             def attempt(seed: int):
                 seeds.append(seed)
-                return engine._generate_unit(engine.model, unit, seed=seed)
+                return engine._generate_unit(engine.model, effective_unit, seed=seed)
 
             try:
                 output = generate_with_runaway_guard(
-                    unit=unit,
+                    unit=effective_unit,
                     generate_attempt=attempt,
                     audio_pad_token_id=int(engine.processor.model_config.audio_pad_token_id),
                     first_seed=BASE_SEED + unit.index + fixture_seed_offset,
                     log=lambda message: (messages.append(message), print(message)),
                 )
-                generated.append((case, unit, output, seeds, messages))
+                generated.append((case, unit, pronunciation, output, seeds, messages))
             except Exception as exc:
                 failures.append({"id": case["id"], "error": f"{type(exc).__name__}: {exc}"})
 
@@ -120,7 +124,7 @@ def generate_fixtures(
         engine.processor.audio_tokenizer = engine.processor.audio_tokenizer.to("cuda:0")
         new_entries = []
         try:
-            for case, unit, output, seeds, messages in generated:
+            for case, unit, pronunciation, output, seeds, messages in generated:
                 destination = case["destination"]
                 temporary = destination.with_name(f".{destination.stem}.tmp.wav")
                 try:
@@ -134,6 +138,11 @@ def generate_fixtures(
                         "case_id": case["id"],
                         "filename": destination.name,
                         "expected_text": case["expected_text"],
+                        "effective_synthesis_text": pronunciation.synthesis_text,
+                        "pronunciation": {
+                            "profile": PT_BR_RESOLVER.profile,
+                            "rules": [rule.to_dict() for rule in pronunciation.applied_rules],
+                        },
                         "seed": seeds[-1],
                         "attempts": len(seeds),
                         "guard_retries": max(0, len(seeds) - 1),

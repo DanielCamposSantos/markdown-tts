@@ -193,6 +193,8 @@ class LibraryStore:
         }
         if result.asr_validation is not None:
             metadata["asr_validation"] = result.asr_validation
+        if result.pronunciation is not None:
+            metadata["pronunciation"] = result.pronunciation
         self._atomic_text(metadata_path, json.dumps(metadata, ensure_ascii=False, indent=2))
         json.loads(metadata_path.read_text(encoding="utf-8"))
         self.generations.complete(

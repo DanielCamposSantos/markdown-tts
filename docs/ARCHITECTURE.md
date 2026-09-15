@@ -225,6 +225,25 @@ integração com a geração normal.
 
 Normalizacao pode uniformizar case, acentos, espacos e pontuacao, mas deve preservar palavras relevantes, numeros, siglas e tokens tecnicos. Similaridade de caracteres isolada nao basta: combinar cobertura de tokens, alinhamento aproximado e regras para truncamento/audio vazio. Thresholds devem ser configuraveis, explicaveis e limitados para evitar loops de regeneracao.
 
+### Pronuncia PT-BR controlada
+
+Depois da construcao e validacao do Speech Plan canonico, o resolver `pt-BR-v3`
+cria copias de sintese das unidades. Seu lexicon extensivel, case-insensitive e
+delimitado prioriza siglas cadastradas de ciberseguranca e redes; cues foneticos
+otimizados para o MOSS podem diferir da grafia canonica dos nomes das letras.
+Hifen e barra so sao silenciosos em termos compostos explicitamente cadastrados,
+e digitos so possuem expansoes controladas. Nao existe regra geral para sequencias
+maiusculas. IDs, `display_text`, `source_atoms`, pausas e Markdown permanecem canonicos.
+O perfil separa nomes semanticos de cues acusticos: o nome canonico da letra `Y`
+permanece `ípsilon`, enquanto o MOSS recebe o cue interno `ípsilom`.
+Metadata registra perfil e regras aplicadas sem
+duplicar frases. Geracoes antigas sem esse campo sao tratadas como legacy/none.
+
+Quando ASR esta habilitado, apenas unidades transformadas possuem duas formas
+esperadas equivalentes: texto canonico e texto efetivo. Cada forma passa pelos
+mesmos thresholds, e vence o melhor resultado; isso nao flexibiliza o validator
+global nem promove transcricoes incompletas.
+
 ### Integração ASR opt-in
 
 `ASR_VALIDATION_ENABLED` permanece falso por padrão. Quando habilitado, o fluxo

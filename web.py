@@ -373,6 +373,9 @@ def persisted_generation(generation_id: str):
             library.resolve(path).is_file() and library.resolve(path).stat().st_size > 0 for path in artifacts
         )
         data["metadata"] = metadata
+        data["pronunciation_status"] = (
+            metadata.get("pronunciation", {}).get("profile") or "legacy"
+        )
         data["regeneration_available"] = available
         data["artifact_revision"] = generation.artifact_revision
         data["audio_url"] = f"/api/generations/{generation_id}/audio?revision={generation.artifact_revision}"

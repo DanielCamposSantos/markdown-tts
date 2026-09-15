@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Mapping
 
 from app.audio_generation_guard import GenerationCancelled
 from app.config import (
@@ -14,7 +14,7 @@ from app.config import (
 )
 from app.speech_plan import SpeechUnit
 from app.validation.manager import AsrManager
-from app.validation.validator import ValidationResult, validate_result
+from app.validation.validator import ValidationResult, validate_acceptable_results
 
 
 class AsrValidationFailedError(RuntimeError):
@@ -57,6 +57,7 @@ class AsrValidationCoordinator:
         *,
         progress_callback: Callable[[str, int, int, str], None] | None = None,
         should_cancel=None,
+        base_units: Mapping[int, SpeechUnit] | None = None,
     ) -> AsrValidationOutcome:
         pending = list(units)
         latest: dict[int, ValidationResult] = {}
@@ -77,8 +78,12 @@ class AsrValidationCoordinator:
                     if progress_callback:
                         label = "Revalidando áudio" if round_number else "Validando áudio"
                         progress_callback("asr_validation", position, len(pending), f"{label} {position} de {len(pending)}")
-                    result = validate_result(
-                        unit.synthesis_text,
+                    expected_forms = [unit.synthesis_text]
+                    base_unit = base_units.get(unit.index) if base_units else None
+                    if base_unit is not None and base_unit.synthesis_text != unit.synthesis_text:
+                        expected_forms.insert(0, base_unit.synthesis_text)
+                    result = validate_acceptable_results(
+                        expected_forms,
                         self.asr_manager.transcribe(unit_dir / f"{unit.index:06d}.wav", ASR_LANGUAGE),
                     )
                     latest[unit.index] = result

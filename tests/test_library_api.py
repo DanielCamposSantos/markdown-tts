@@ -47,6 +47,7 @@ def test_library_document_and_generation_apis_survive_reopen(monkeypatch, tmp_pa
     assert detail["markdown"] == "Texto."
     assert detail["generations"][0]["status"] == "completed"
     assert persisted["metadata"]["timeline"][0]["end_seconds"] == 0.75
+    assert persisted["pronunciation_status"] == "legacy"
     assert "/audio?revision=" in persisted["audio_url"]
 
 

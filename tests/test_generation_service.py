@@ -56,7 +56,8 @@ def test_generation_service_builds_plan_and_passes_output_and_progress(tmp_path)
     assert planned == expected
     assert engine.units is not planned
     assert engine.output_file == output_file
-    assert result is engine.result
+    assert result.output_file == engine.result.output_file
+    assert result.pronunciation == {"profile": "pt-BR-v3", "applied_units": {}}
     assert progress[0].phase == "generation"
     assert progress[0].current == 1
     assert progress[0].total == 3
@@ -118,6 +119,7 @@ class StagedEngine:
         self.unloads = 0
 
     def generate_units(self, units, *, unit_output_dir, seed_offset=0, **kwargs):
+        self.texts = [unit.synthesis_text for unit in units]
         self.batches.append(([unit.index for unit in units], seed_offset))
         for unit in units:
             write_unit_wav(torch.zeros((1, 48)), SAMPLE_RATE, unit_output_dir / f"{unit.index:06d}.wav")
@@ -147,6 +149,22 @@ def test_enabled_pipeline_validates_before_assembly_and_records_metadata(tmp_pat
     assert [event.phase for event in events][-3:] == ["asr_validation", "assemble", "export"]
 
 
+def test_asr_accepts_canonical_transcript_for_pronounced_unit(tmp_path, monkeypatch):
+    model = tmp_path / "model"; model.mkdir()
+    manager = AsrManager(
+        lambda: FakeAsrEngine(default=AsrResult("HTTPS utiliza TLS.", backend="fake")),
+        model_path=model,
+    )
+    engine = StagedEngine()
+    monkeypatch.setattr(generation_module, "export_mp3", lambda audio, rate, path: path.write_bytes(b"mp3"))
+    result = GenerationService(engine, asr_manager=manager, asr_enabled=True).generate(
+        "HTTPS utiliza TLS.", tmp_path / "audio.mp3", unit_output_dir=tmp_path / "units",
+    )
+    assert engine.texts == ["agá tê tê pê éssi utiliza tê éli éssi."]
+    assert engine.batches == [([1], 0)]
+    assert result.asr_validation["units"]["1"]["status"] == "pass"
+
+
 def test_disabled_pipeline_does_not_touch_asr(tmp_path):
     class Bomb:
         def preflight(self):
@@ -155,6 +173,21 @@ def test_disabled_pipeline_does_not_touch_asr(tmp_path):
     engine = FakeEngine(make_result(tmp_path / "audio.mp3"))
     GenerationService(engine, asr_manager=Bomb(), asr_enabled=False).generate("Texto.", tmp_path / "audio.mp3")
     assert engine.units is not None
+
+
+def test_generation_uses_effective_pronunciation_but_exposes_canonical_plan(tmp_path):
+    engine = FakeEngine(make_result(tmp_path / "audio.mp3"))
+    planned = []
+    result = GenerationService(engine, asr_enabled=False).generate(
+        "HTTPS utiliza TLS.", tmp_path / "audio.mp3",
+        plan_callback=lambda units: planned.extend(units),
+    )
+    assert planned[0].display_text == planned[0].synthesis_text == "HTTPS utiliza TLS."
+    assert engine.units[0].display_text == "HTTPS utiliza TLS."
+    assert engine.units[0].synthesis_text == "agá tê tê pê éssi utiliza tê éli éssi."
+    assert engine.units[0].index == planned[0].index
+    assert result.pronunciation["profile"] == "pt-BR-v3"
+    assert [rule["rule_id"] for rule in result.pronunciation["applied_units"]["1"]["rules"]] == ["https", "tls"]
 
 
 def test_persistent_asr_failure_never_publishes(tmp_path):

@@ -13,6 +13,7 @@ from app.speech_plan import SpeechUnit
 from app.config import ASR_VALIDATION_ENABLED
 from app.services.asr_validation import AsrValidationCoordinator
 from app.validation.manager import AsrManager
+from app.pronunciation import PT_BR_RESOLVER, PronunciationResolver, resolve_speech_plan
 
 
 MANUAL_REGENERATION_SEED_OFFSET = 100_000
@@ -39,10 +40,15 @@ def merge_asr_metadata(previous: dict | None, current: dict) -> dict:
 
 
 class RegenerationService:
-    def __init__(self, engine, *, asr_manager: AsrManager | None = None, asr_enabled: bool = ASR_VALIDATION_ENABLED) -> None:
+    def __init__(
+        self, engine, *, asr_manager: AsrManager | None = None,
+        asr_enabled: bool = ASR_VALIDATION_ENABLED,
+        pronunciation_resolver: PronunciationResolver = PT_BR_RESOLVER,
+    ) -> None:
         self.engine = engine
         self.asr_manager = asr_manager
         self.asr_enabled = asr_enabled
+        self.pronunciation_resolver = pronunciation_resolver
 
     def regenerate(
         self,
@@ -69,6 +75,8 @@ class RegenerationService:
         old_revision = int(generation.artifact_revision or metadata.get("artifact_revision", 0))
         new_revision = old_revision + 1
         unit = SpeechUnit(**by_id[unit_id_value])
+        resolved = resolve_speech_plan([unit], self.pronunciation_resolver)
+        effective_unit = resolved.units[0]
         generation_dir = library.resolve(generation.metadata_path).parent
         staging = generation_dir / f".regeneration-{job_id}"
         unit_stage = staging / "units"
@@ -88,21 +96,22 @@ class RegenerationService:
                 manager = self.asr_manager or AsrManager()
                 manager.preflight()
                 self.engine.generate_units(
-                    [unit],
+                    [effective_unit],
                     progress_callback=engine_progress if progress_callback is not None else None,
                     should_cancel=should_cancel,
                     unit_output_dir=unit_stage,
                     seed_offset=(new_revision - 1) * MANUAL_REGENERATION_SEED_OFFSET,
                 )
                 outcome = AsrValidationCoordinator(manager).validate_and_correct(
-                    [unit], unit_stage, self.engine,
+                    [effective_unit], unit_stage, self.engine,
                     progress_callback=engine_progress if progress_callback is not None else None,
                     should_cancel=should_cancel,
+                    base_units={unit.index: unit},
                 )
                 asr_metadata = outcome.metadata
             else:
                 self.engine.generate(
-                    [unit], one_unit_mp3,
+                    [effective_unit], one_unit_mp3,
                     progress_callback=engine_progress if progress_callback is not None else None,
                     should_cancel=should_cancel,
                     unit_output_dir=unit_stage,
@@ -145,6 +154,14 @@ class RegenerationService:
             })
             if asr_metadata is not None:
                 revised["asr_validation"] = merge_asr_metadata(metadata.get("asr_validation"), asr_metadata)
+            previous_pronunciation = metadata.get("pronunciation") or {}
+            applied_units = dict(previous_pronunciation.get("applied_units", {}))
+            applied_units.pop(str(unit_id_value), None)
+            applied_units.update(resolved.metadata["applied_units"])
+            revised["pronunciation"] = {
+                "profile": resolved.metadata["profile"],
+                "applied_units": applied_units,
+            }
             staged_metadata = staging / final_metadata.name
             staged_metadata.write_text(json.dumps(revised, ensure_ascii=False, indent=2), encoding="utf-8")
             json.loads(staged_metadata.read_text(encoding="utf-8"))

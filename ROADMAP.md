@@ -281,11 +281,15 @@ regeneração manual, mas permanecem desativadas por padrão até smoke test man
 **Objetivo:** tratar poucas expressoes comprovadamente problematicas.
 
 **Evidencia acustica:** o corpus neutro confirmou falhas sistematicas em `C++`,
-`HTTPS`/`TLS` e `SYN`/`SYN-ACK`/`ACK`. A futura camada deve permitir o override
+`HTTPS`/`TLS` e `SYN`/`SYN-ACK`/`ACK`. O perfil versionado `pt-BR-v3` implementa o override
 explicito `C++ -> C mais mais` e spelling de siglas letra por letra em PT-BR,
 preservando ritmo continuo, sem pausas artificiais. Essas transformacoes devem
 atuar somente em `synthesis_text`; `display_text` permanece original. Nao
 generalizar para toda sequencia maiuscula antes de projeto e testes dedicados.
+O lexicon controlado foi ampliado para o foco primario em ciberseguranca e redes;
+seus cues foneticos para o MOSS sao distintos dos nomes ortograficos canonicos.
+No v3, somente o cue de `Y` mudou de `ípsilon` para `ípsilom`; seu nome canonico
+continua sendo `ípsilon`.
 
 **Motivacao:** siglas como SYN, SYN-ACK, ACK, HTTPS e TLS podem falhar ocasionalmente, mas substituicoes agressivas prejudicam naturalidade.
 
@@ -293,13 +297,13 @@ generalizar para toda sequencia maiuscula antes de projeto e testes dedicados.
 
 **Areas provaveis:** camada de preparacao de `synthesis_text`, configuracao e UI opcional.
 
-**Tarefas:** mapear override original -> sintese; desativado por padrao; manter `display_text`; versionar configuracao; avaliar controles nativos do MOSS antes de transliteracao.
+**Tarefas:** mapear override original -> sintese; manter `display_text`; versionar configuracao; avaliar controles nativos do MOSS antes de transliteracao.
 
 **Riscos:** perda de rastreabilidade, alteracao semantica, aplicacao em substring indevida.
 
 **Testes:** display invariavel, match delimitado, opt-in, casos sem override e regressao auditiva.
 
-**Aceitacao:** somente expressoes aprovadas mudam e o documento visual permanece original.
+**Aceitacao:** somente expressoes aprovadas mudam e o documento visual permanece original. A aplicacao ocorre depois da validacao do Speech Plan e antes do MOSS, inclusive na regeneracao individual; o ASR aceita a forma original ou a expansao somente nas unidades em que uma regra foi aplicada.
 
 **Rollback:** desligar todos os overrides por configuracao.
 

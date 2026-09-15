@@ -145,6 +145,32 @@ def test_regeneration_changes_only_target_reassembles_and_reconciles_playback(tm
     assert library.resolve(current.audio_path).read_bytes() == b"reassembled"
 
 
+def test_manual_regeneration_uses_pronunciation_without_changing_seed_policy(tmp_path, monkeypatch):
+    voice = tmp_path / "voice.wav"; voice.write_bytes(b"voice")
+    library = LibraryStore(tmp_path / "library", voice)
+    document, generation, staging, final = library.create("Doc", "HTTPS utiliza TLS.")
+
+    class TextEngine(ArtifactEngine):
+        def generate(self, units, *args, **kwargs):
+            self.texts = [unit.synthesis_text for unit in units]
+            return super().generate(units, *args, **kwargs)
+
+    GenerationService(TextEngine()).generate_persisted(
+        "HTTPS utiliza TLS.", staging, final, document, generation, library,
+    )
+    stored = library.generations.get(generation.generation_id)
+    job = JobRepository(library.database).enqueue_regeneration(stored.generation_id, stored.document_id, 1, 1)
+    engine = TextEngine(target_samples=20)
+    monkeypatch.setattr(regeneration_module, "export_mp3", lambda audio, rate, path: path.write_bytes(b"new"))
+    RegenerationService(engine).regenerate(library, stored.generation_id, 1, job.job_id)
+    metadata = library.metadata(library.generations.get(stored.generation_id))
+    assert engine.texts == ["agá tê tê pê éssi utiliza tê éli éssi."]
+    assert engine.calls == [([1], MANUAL_REGENERATION_SEED_OFFSET)]
+    assert metadata["units"][0]["synthesis_text"] == "HTTPS utiliza TLS."
+    assert metadata["pronunciation"]["profile"] == "pt-BR-v3"
+    assert set(metadata["pronunciation"]["applied_units"]) == {"1"}
+
+
 def test_regeneration_failure_keeps_old_revision_authoritative(tmp_path, monkeypatch):
     library, _, generation, _ = capable_generation(tmp_path)
     old = library.generations.get(generation.generation_id)

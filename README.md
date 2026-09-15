@@ -272,7 +272,7 @@ Uma conversao indiscriminada do audio tokenizer inteiro para BF16 tambem nao e a
 - Ha cancelamento cooperativo, runaway retry e regeneracao individual para geracoes novas com WAVs por unidade.
 - Jobs, fila, regeneracoes e playback sao persistidos em SQLite; jobs ativos interrompidos sao recuperados explicitamente.
 - A interface restaura posicao e velocidade, oferece navegacao por unidade e usa a timeline real.
-- Algumas siglas tecnicas, como `SYN`, `SYN-ACK`, `ACK`, `HTTPS` e `TLS`, podem exigir avaliacao pontual. O projeto nao aplica um grande dicionario fonetico.
+- O perfil controlado `pt-BR-v3`, voltado a estudos de ciberseguranca e redes, soletra em PT-BR apenas siglas cadastradas no lexicon extensivel. Cues foneticos enviados ao MOSS podem diferir da grafia oficial do nome da letra; especificamente, o nome canonico `Y = ípsilon` usa o cue interno `ípsilom`. O texto exibido permanece original e nao ha expansao universal de palavras maiusculas. `C++` mantem o override aprovado `cê mais mais`.
 - A aplicacao nao executa validacao ASR automatica; os thresholds experimentais ainda exigem benchmark PT-BR.
 - O arquivo `environment-current.txt` registra um ambiente que funcionou, mas as dependencias ainda nao estao congeladas em um manifesto de instalacao do projeto.
 

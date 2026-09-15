@@ -107,5 +107,25 @@ def validate_result(expected_text: str, asr_result: AsrResult, config: Validatio
     )
 
 
+def validate_acceptable_results(
+    expected_texts: tuple[str, ...] | list[str],
+    asr_result: AsrResult,
+    config: ValidationConfig | None = None,
+) -> ValidationResult:
+    """Return the strongest normal validation among explicit equivalent forms."""
+    unique = tuple(dict.fromkeys(expected_texts))
+    if not unique:
+        raise ValueError("At least one expected form is required")
+    results = [validate_result(text, asr_result, config) for text in unique]
+    rank = {"fail": 0, "warn": 1, "pass": 2}
+    return max(
+        results,
+        key=lambda result: (
+            rank[result.status], result.token_coverage, result.similarity_score,
+            -len(result.missing_tokens), -len(result.extra_tokens),
+        ),
+    )
+
+
 def validate_audio(expected_text: str, audio_path: Path, engine: AsrEngine, config: ValidationConfig | None = None) -> ValidationResult:
     return validate_result(expected_text, engine.transcribe(Path(audio_path), language="pt"), config)
