@@ -155,6 +155,9 @@ class BackupService:
                 if metadata:
                     data = json.loads((self.library_root / _safe_relative(metadata)).read_text(encoding="utf-8"))
                     result.update(data.get("unit_artifacts", []))
+                    alignment = data.get("alignment", {}).get("artifact")
+                    if alignment:
+                        result.add(alignment)
         return result
 
     def _audit(self, action: str, details: dict) -> None:

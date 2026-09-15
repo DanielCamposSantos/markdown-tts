@@ -26,6 +26,7 @@ class AsrValidationOutcome:
     metadata: dict
     generation_seconds: float = 0.0
     decode_seconds: float = 0.0
+    asr_results: dict[int, object] | None = None
 
 
 def _cancel(should_cancel) -> None:
@@ -61,6 +62,7 @@ class AsrValidationCoordinator:
     ) -> AsrValidationOutcome:
         pending = list(units)
         latest: dict[int, ValidationResult] = {}
+        latest_asr = {}
         rounds_by_unit = {unit.index: 0 for unit in units}
         regenerated: set[int] = set()
         generation_seconds = decode_seconds = 0.0
@@ -82,11 +84,13 @@ class AsrValidationCoordinator:
                     base_unit = base_units.get(unit.index) if base_units else None
                     if base_unit is not None and base_unit.synthesis_text != unit.synthesis_text:
                         expected_forms.insert(0, base_unit.synthesis_text)
+                    asr_result = self.asr_manager.transcribe(unit_dir / f"{unit.index:06d}.wav", ASR_LANGUAGE)
                     result = validate_acceptable_results(
                         expected_forms,
-                        self.asr_manager.transcribe(unit_dir / f"{unit.index:06d}.wav", ASR_LANGUAGE),
+                        asr_result,
                     )
                     latest[unit.index] = result
+                    latest_asr[unit.index] = asr_result
                     if result.status == "fail":
                         failures.append(unit)
                 if not failures:
@@ -124,7 +128,7 @@ class AsrValidationCoordinator:
                     "auto_regenerated_units": sorted(regenerated),
                 },
                 "units": {str(unit_id): _result_metadata(result, rounds_by_unit[unit_id]) for unit_id, result in latest.items()},
-            }, generation_seconds, decode_seconds)
+            }, generation_seconds, decode_seconds, latest_asr)
         finally:
             self.asr_manager.unload()
             tts_engine.unload()

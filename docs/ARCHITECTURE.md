@@ -298,15 +298,43 @@ O player deve persistir velocidade e posicao, oferecer anterior/proxima, +/-10 s
 
 `SystemStatusService` agrega telemetria GPU global, disponibilidade local,
 integridade da voz, estados do `ModelManager`/`AsrManager`, disco e readiness.
-Dados de hardware/paths sao sondados com cache de tres segundos; respostas
-publicas nao incluem paths, hashes, documentos ou erros internos. A UI atualiza
-esse estado a cada quatro segundos, independentemente do polling rapido do job.
+Dados de hardware/paths sao sondados com cache thread-safe de 0,9 segundo;
+respostas publicas nao incluem paths, hashes, documentos ou erros internos. A UI
+consulta a cada quatro segundos em idle e a cada segundo durante job ou estados
+loading/generating/validating/unloading. Assim ha no maximo aproximadamente uma
+execucao de `nvidia-smi` por segundo, com fallback Torch e rotulo VRAM global.
 
 `OperationalSettingsStore` persiste atomicamente apenas `standard` ou
 `validated`. A factory do worker le a escolha ao iniciar a proxima operacao e
 compartilha um `AsrManager` observavel. O default continua ASR off. Essa camada
 nao e fonte metodologica: metadata de reproducibilidade e `asr_config_id`
 continuam descrevendo o que realmente foi executado.
+
+## CURRENT: word alignment
+
+Faster-Whisper recebe `word_timestamps=True` na mesma chamada do validator.
+`AsrValidationOutcome` preserva o resultado final aceito; `app/alignment.py`
+mapeia palavras para spans do `display_text` sem alterar texto, audio ou status.
+Regras de pronuncia agrupam varias palavras faladas em um token visual. Tempos
+locais usam o inicio autoritativo da timeline e sao limitados ao fim da unidade.
+
+`word-alignment-rN.json` usa schema v1. Metadata informa `complete`, `partial` ou
+`not_available`. Regeneracao com ASR retranscreve apenas o target; sem ASR o
+target fica indisponivel. Unidades intactas recebem somente o delta da timeline.
+
+## CURRENT: launcher desktop
+
+`python -m app.launcher` e `scripts/start_launcher.ps1` fornecem a GUI Tkinter
+oficial sobre a mesma FastAPI/UI. `LauncherController` mantem o handle do filho e
+um Windows Job Object configurado com `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`.
+Botao stop e `WM_DELETE_WINDOW` encerram apenas o filho owned; fechamento/crash
+do launcher fecha o Job Object. `/api/health` distingue backend externo, que nao
+recebe ownership, de outro servico na porta, que causa erro seguro.
+
+Depois do health, Edge/Chrome usam `--app=` e o navegador padrao e fallback. O
+bind segue `127.0.0.1`; nao ha servico, firewall, admin, PATH global ou nova
+dependencia. `create_launcher_shortcut.ps1` cria um unico `.lnk` com `pythonw`,
+working directory resolvido e icone opcional em `assets/markdown_tts.ico`.
 
 ## TARGET: crash recovery e artefatos
 

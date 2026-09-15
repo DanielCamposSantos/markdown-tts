@@ -353,10 +353,12 @@ nao altera o PATH global e nunca substitui a voz canonica.
 
 ## Status operacional e presets
 
-A barra compacta consulta `GET /api/system-status` a cada quatro segundos e
+A barra compacta consulta `GET /api/system-status` a cada quatro segundos em
+ociosidade e a cada segundo durante jobs ou load/generation/unload de MOSS/ASR. Ela
 mostra GPU, VRAM global, estado real do MOSS/ASR, voz e readiness. Em Windows a
 VRAM e rotulada como global, nao como consumo exclusivo do app. A coleta tem
-cache de tres segundos e falha de telemetria aparece como indisponivel sem
+cache de 0,9 segundo (no maximo aproximadamente um `nvidia-smi` por segundo,
+mesmo com requisicoes concorrentes) e falha aparece como indisponivel sem
 derrubar o servidor.
 
 Existem somente dois presets operacionais: **Padrao**, com ASR desligado, e
@@ -365,6 +367,38 @@ geracoes. A escolha e persistida em `library/operational-settings.json`. Presets
 nao alteram modelo, voz, idioma, sampling, seeds, guard, perfil de pronuncia ou
 thresholds. O preflight recusa a fila antes de carregar modelos quando faltar
 voz, CUDA, MOSS, FFmpeg, baseline, escrita/espaco minimo ou ASR solicitado.
+
+## Word alignment e desktop
+
+Geracoes feitas com **Validacao ASR** reutilizam os word timestamps da mesma
+transcricao para produzir `word-alignment-rN.json` (schema v1). Siglas expandidas
+como HTTPS, TLS, SYN, SYN-ACK, ACK e C++ continuam como um unico token visual; o
+intervalo cobre todas as palavras faladas. Alignment parcial nunca muda o
+resultado do validator. Com ASR off ou em geracoes legacy, permanece o fallback
+de highlight e click por unidade.
+
+Palavras alinhadas acompanham `audio.currentTime`, funcionam em todas as
+velocidades e permitem click-to-seek. A busca temporal e binaria; scroll suave
+ocorre apenas na troca de unidade.
+
+O fluxo operacional oficial e um unico launcher grafico:
+
+```powershell
+.\scripts\start_launcher.ps1
+.\scripts\create_launcher_shortcut.ps1  # cria Markdown TTS.lnk no Desktop
+```
+
+Abra **Markdown TTS**, clique **INICIAR**, use a aplicacao e clique **ENCERRAR**
+ou feche o launcher. O mesmo botao controla somente o backend filho. Um Windows
+Job Object com kill-on-close impede que esse processo fique abandonado se o
+launcher morrer. Backend Markdown TTS preexistente aparece como externo e nunca
+e assumido ou encerrado; outro servico na porta causa erro seguro.
+
+O launcher valida `/api/health` antes de abrir Edge/Chrome em app mode (navegador
+padrao e fallback). Fechar apenas a janela Edge nao encerra o backend: feche o
+**launcher**. O bind permanece `127.0.0.1:7860`, sem firewall ou admin. Se
+`assets/markdown_tts.ico` existir, janela e atalho o utilizam automaticamente;
+na ausencia dele, o fallback do Windows/Tk e usado sem erro.
 
 ## Roadmap
 

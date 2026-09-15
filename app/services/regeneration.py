@@ -15,6 +15,8 @@ from app.services.asr_validation import AsrValidationCoordinator
 from app.validation.manager import AsrManager
 from app.pronunciation import PT_BR_RESOLVER, PronunciationResolver, resolve_speech_plan
 from app.reproducibility import generation_reproducibility
+from app.alignment import align_unit, rebase_alignment
+from app.validation.asr import AsrResult
 
 
 MANUAL_REGENERATION_SEED_OFFSET = 100_000
@@ -86,6 +88,8 @@ class RegenerationService:
         final_unit = generation_dir / "units" / f"{unit_id_value:06d}-r{new_revision}.wav"
         final_audio = generation_dir / f"audio-r{new_revision}.mp3"
         final_metadata = generation_dir / f"metadata-r{new_revision}.json"
+        final_alignment = generation_dir / f"word-alignment-r{new_revision}.json"
+        target_alignment = None
         try:
             if should_cancel and should_cancel():
                 raise GenerationCancelled("Regeneração cancelada.")
@@ -111,6 +115,11 @@ class RegenerationService:
                     base_units={unit.index: unit},
                 )
                 asr_metadata = outcome.metadata
+                target_alignment = align_unit(
+                    unit.index, unit.display_text,
+                    (outcome.asr_results or {}).get(unit.index, AsrResult("")),
+                    resolved.results[unit.index].applied_rules,
+                )
             else:
                 self.engine.generate(
                     [effective_unit], one_unit_mp3,
@@ -154,6 +163,18 @@ class RegenerationService:
                 "unit_artifacts": revised_artifacts,
                 "timeline": [entry.to_dict() for entry in timeline],
             })
+            previous_alignment = None
+            previous_alignment_path = metadata.get("alignment", {}).get("artifact")
+            if previous_alignment_path:
+                previous_alignment = json.loads(library.resolve(previous_alignment_path).read_text(encoding="utf-8"))
+            alignment = rebase_alignment(
+                previous_alignment, metadata.get("timeline", []), revised["timeline"],
+                unit_id_value, target_alignment,
+            )
+            revised["alignment"] = {
+                "schema_version": 1, "status": alignment["status"],
+                "artifact": library._relative(final_alignment),
+            }
             if asr_metadata is not None:
                 revised["asr_validation"] = merge_asr_metadata(metadata.get("asr_validation"), asr_metadata)
             previous_pronunciation = metadata.get("pronunciation") or {}
@@ -168,6 +189,8 @@ class RegenerationService:
                 asr_used=asr_metadata is not None
             )
             staged_metadata = staging / final_metadata.name
+            staged_alignment = staging / final_alignment.name
+            staged_alignment.write_text(json.dumps(alignment, ensure_ascii=False, indent=2), encoding="utf-8")
             staged_metadata.write_text(json.dumps(revised, ensure_ascii=False, indent=2), encoding="utf-8")
             json.loads(staged_metadata.read_text(encoding="utf-8"))
             if should_cancel and should_cancel():
@@ -175,6 +198,7 @@ class RegenerationService:
             final_unit.parent.mkdir(parents=True, exist_ok=True)
             os.replace(new_unit_stage, final_unit)
             os.replace(staged_audio, final_audio)
+            os.replace(staged_alignment, final_alignment)
             os.replace(staged_metadata, final_metadata)
             if progress_callback is not None:
                 progress_callback("publish", 1, 1, f"Publicando revisão {new_revision}...")

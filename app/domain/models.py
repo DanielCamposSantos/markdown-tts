@@ -66,6 +66,7 @@ class GenerationResult:
     timeline: tuple[TimelineEntry, ...]
     asr_validation: dict[str, Any] | None = None
     pronunciation: dict[str, Any] | None = None
+    alignment: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)

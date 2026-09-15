@@ -29,13 +29,15 @@ def test_backend_loads_local_only_and_transcribes(monkeypatch, tmp_path):
 
         def transcribe(self, path, **kwargs):
             calls["transcribe"] = (path, kwargs)
-            return iter((SimpleNamespace(text=" Olá ", avg_logprob=-0.1),)), SimpleNamespace(language="pt", duration=1.2)
+            word = SimpleNamespace(word=" Olá ", start=0.1, end=0.5, probability=0.9)
+            return iter((SimpleNamespace(text=" Olá ", words=(word,), avg_logprob=-0.1),)), SimpleNamespace(language="pt", duration=1.2)
 
     monkeypatch.setitem(sys.modules, "faster_whisper", SimpleNamespace(WhisperModel=FakeModel))
     engine = FasterWhisperAsrEngine(model_path, device="cpu", compute_type="float32")
     result = engine.transcribe(tmp_path / "audio.wav")
     assert calls["load"][1]["local_files_only"] is True
-    assert calls["transcribe"][1] == {"language": "pt", "beam_size": 5, "vad_filter": False}
+    assert calls["transcribe"][1] == {"language": "pt", "beam_size": 5, "vad_filter": False, "word_timestamps": True}
     assert result.text == "Olá" and result.duration_seconds == 1.2
     assert result.backend == "faster-whisper" and result.model == "medium"
+    assert result.words[0].text == "Olá" and result.words[0].start_seconds == 0.1
     engine.unload()

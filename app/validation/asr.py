@@ -14,6 +14,14 @@ ASR_ENABLED = ASR_VALIDATION_ENABLED
 
 
 @dataclass(frozen=True)
+class AsrWord:
+    text: str
+    start_seconds: float | None
+    end_seconds: float | None
+    confidence: float | None = None
+
+
+@dataclass(frozen=True)
 class AsrResult:
     text: str
     language: str | None = None
@@ -22,6 +30,7 @@ class AsrResult:
     backend: str = "unknown"
     model: str | None = None
     processing_seconds: float | None = None
+    words: tuple[AsrWord, ...] = ()
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -102,10 +111,16 @@ class FasterWhisperAsrEngine:
             language=language,
             beam_size=self.beam_size,
             vad_filter=False,
+            word_timestamps=True,
         )
         materialized = tuple(segments)
         elapsed = time.perf_counter() - started
         text = " ".join(segment.text.strip() for segment in materialized if segment.text.strip()).strip()
+        words = tuple(
+            AsrWord(word.word.strip(), word.start, word.end, getattr(word, "probability", None))
+            for segment in materialized for word in (getattr(segment, "words", None) or ())
+            if word.word.strip()
+        )
         return AsrResult(
             text=text,
             language=getattr(info, "language", language),
@@ -114,6 +129,7 @@ class FasterWhisperAsrEngine:
             backend="faster-whisper",
             model=self.model_path.name,
             processing_seconds=elapsed,
+            words=words,
         )
 
 

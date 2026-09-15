@@ -18,10 +18,20 @@ const mossStatus = $("mossStatus"), asrStatus = $("asrStatus"), voiceStatus = $(
 
 let previewTimer, pollTimer, activeJobId, activeGenerationId, pendingPlayback;
 let timeline = [], activeUnitIndex = -1, lastPlaybackSave = 0, playbackSaveInFlight = false;
+let alignment = {status: "not_available", units: []}, alignedWords = [], activeWordIndex = -1;
 let playbackSavePending = false;
 let regenerationAvailable = false, regenerationBusy = false;
 let previewSequence = 0, activePreviewTab = "preview", filenameWasEdited = false, dragDepth = 0;
 let systemStatusTimer, latestSystemStatus;
+const SYSTEM_STATUS_IDLE_MS = 4000, SYSTEM_STATUS_ACTIVE_MS = 1000;
+const ACTIVE_TTS_STATES = new Set(["loading", "generating", "unloading"]);
+const ACTIVE_ASR_STATES = new Set(["loading", "validating", "unloading"]);
+
+function systemStatusPollInterval(status = latestSystemStatus) {
+    const jobActive = Boolean(activeJobId);
+    const modelActive = ACTIVE_TTS_STATES.has(status?.tts?.state) || ACTIVE_ASR_STATES.has(status?.asr?.state);
+    return jobActive || modelActive ? SYSTEM_STATUS_ACTIVE_MS : SYSTEM_STATUS_IDLE_MS;
+}
 
 const modelStateLabels = {unloaded: "descarregado", loading: "carregando", ready: "pronto", generating: "gerando", unloading: "descarregando", error: "erro"};
 const asrStateLabels = {unloaded: "descarregado", loading: "carregando", ready: "pronto", validating: "validando", unloading: "descarregando", error: "erro"};
@@ -49,7 +59,7 @@ async function refreshSystemStatus(schedule = true) {
         readinessStatus.textContent = "Status indisponível";
         readinessStatus.title = error.message;
     } finally {
-        if (schedule) systemStatusTimer = setTimeout(refreshSystemStatus, 4000);
+        if (schedule) systemStatusTimer = setTimeout(refreshSystemStatus, systemStatusPollInterval());
     }
 }
 async function loadOperationalSettings() {
@@ -78,6 +88,18 @@ function formatTime(seconds) {
     return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
 }
 function unitId(entry) { return Number(entry.unit_id ?? entry.index ?? entry.id); }
+function alignedText(unit, text) {
+    const current = alignment.units?.find(item => Number(item.unit_id) === unitId(unit));
+    if (!current?.tokens?.length) return escapeHtml(text);
+    let cursor = 0, output = "";
+    current.tokens.forEach(token => {
+        output += escapeHtml(text.slice(cursor, token.display_start));
+        const usable = token.status === "aligned" && token.start_seconds != null;
+        output += `<span class="word-token ${usable ? "aligned-word" : "unaligned-word"}" ${usable ? `data-word-start="${Number(token.start_seconds)}"` : ""}>${escapeHtml(text.slice(token.display_start, token.display_end))}</span>`;
+        cursor = token.display_end;
+    });
+    return output + escapeHtml(text.slice(cursor));
+}
 function timelineIndexAt(position) {
     if (!timeline.length) return -1;
     const current = Math.max(0, Number(position) || 0);
@@ -102,7 +124,7 @@ function renderUnits(units, useTimeline = false) {
         const text = unit.text ?? unit.display_text ?? "";
         const start = useTimeline ? Number(unit.start_seconds) : "";
         const action = useTimeline ? `<button class="regenerate-button" data-unit-id="${unitId(unit)}" ${regenerationAvailable ? "" : "disabled"} title="${regenerationAvailable ? "Regenerar somente esta unidade" : "Esta geração foi criada antes do suporte a regeneração individual"}">Regenerar</button>` : "";
-        return `<div class="reader-unit ${kind}" tabindex="${useTimeline ? 0 : -1}" data-index="${index}" data-start="${start}"><span>${escapeHtml(text)}</span>${action}</div>`;
+        return `<div class="reader-unit ${kind}" tabindex="${useTimeline ? 0 : -1}" data-index="${index}" data-start="${start}"><span>${useTimeline ? alignedText(unit, text) : escapeHtml(text)}</span>${action}</div>`;
     }).join("");
     if (useTimeline) bindReaderClicks();
 }
@@ -125,6 +147,11 @@ function bindReaderClicks() {
         button.addEventListener("click", event => {
             event.stopPropagation();
             regenerateUnit(Number(button.dataset.unitId));
+        });
+    });
+    document.querySelectorAll(".aligned-word").forEach(word => {
+        word.addEventListener("click", event => {
+            event.stopPropagation(); seekTo(Number(word.dataset.wordStart));
         });
     });
 }
@@ -273,11 +300,13 @@ async function pollJob() {
         const job = await response.json(); renderJobProgress(job);
         if (job.status === "completed") {
             generationCard.classList.add("hidden"); generateButton.disabled = false;
+            activeJobId = null;
             await loadGeneration(job.generation_id); await loadLibrary(); return;
         }
         if (["error", "failed", "cancelled"].includes(job.status)) throw new Error(job.error || job.message);
         pollTimer = setTimeout(pollJob, 500);
     } catch (error) {
+        activeJobId = null;
         progressMessage.classList.add("error-message"); progressMessage.textContent = error.message; generateButton.disabled = false;
         if (regenerationBusy) {
             regenerationBusy = false;
@@ -309,7 +338,10 @@ async function loadGeneration(generationId) {
         markdownInput.value = savedDocument.markdown; filenameInput.value = savedDocument.title;
         updateMarkdownPreview(savedDocument.markdown);
     }
-    activeGenerationId = generationId; timeline = generation.metadata.timeline || []; activeUnitIndex = -1;
+    activeGenerationId = generationId; timeline = generation.metadata.timeline || []; activeUnitIndex = -1; activeWordIndex = -1;
+    const alignmentResponse = await fetch(`/api/generations/${generationId}/alignment`);
+    alignment = alignmentResponse.ok ? await alignmentResponse.json() : {status: "not_available", units: []};
+    alignedWords = (alignment.units || []).flatMap(unit => (unit.tokens || []).filter(token => token.status === "aligned" && token.start_seconds != null)).sort((left, right) => left.start_seconds - right.start_seconds);
     regenerationAvailable = Boolean(generation.regeneration_available);
     regenerationBusy = false;
     renderUnits(timeline, true); downloadButton.href = generation.download_url;
@@ -351,16 +383,35 @@ function updateNavigationButtons() {
 }
 function updateActiveUnit(currentTime, scroll = true) {
     const found = timelineIndexAt(currentTime);
-    if (found === activeUnitIndex) return;
-    document.querySelectorAll(".reader-unit.active").forEach(element => element.classList.remove("active"));
-    activeUnitIndex = found; updateNavigationButtons();
+    if (found !== activeUnitIndex) {
+        document.querySelectorAll(".reader-unit.active").forEach(element => element.classList.remove("active"));
+        activeUnitIndex = found; updateNavigationButtons();
+        if (found >= 0) {
+            const element = document.querySelector(`.reader-unit[data-index="${found}"]`);
+            if (element) {
+                element.classList.add("active");
+                const focused = document.activeElement;
+                const editing = focused && (focused.matches("textarea,input,select") || focused.isContentEditable);
+                if (scroll && !editing) element.scrollIntoView({behavior: "smooth", block: "center"});
+            }
+        }
+    }
+    updateActiveWord(currentTime);
+}
+function updateActiveWord(currentTime) {
+    let low = 0, high = alignedWords.length - 1, found = -1;
+    while (low <= high) {
+        const middle = (low + high) >> 1, word = alignedWords[middle];
+        if (currentTime < word.start_seconds) high = middle - 1;
+        else if (currentTime > word.end_seconds) low = middle + 1;
+        else { found = middle; break; }
+    }
+    if (found === activeWordIndex) return;
+    document.querySelectorAll(".aligned-word.active-word").forEach(element => element.classList.remove("active-word"));
+    activeWordIndex = found;
     if (found < 0) return;
-    const element = document.querySelector(`.reader-unit[data-index="${found}"]`);
-    if (!element) return;
-    element.classList.add("active");
-    const focused = document.activeElement;
-    const editing = focused && (focused.matches("textarea,input,select") || focused.isContentEditable);
-    if (scroll && !editing) element.scrollIntoView({behavior: "smooth", block: "center"});
+    const target = document.querySelector(`.aligned-word[data-word-start="${alignedWords[found].start_seconds}"]`);
+    if (target) target.classList.add("active-word");
 }
 async function savePlayback(immediate = false) {
     if (!activeGenerationId) return;

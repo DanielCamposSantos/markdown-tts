@@ -165,6 +165,10 @@ class LibraryStore:
             os.replace(unit_staging, units_dir)
         os.replace(staging_audio, revision_audio)
         metadata_path = final_audio.parent / "metadata.json"
+        alignment_path = None
+        if result.alignment is not None:
+            alignment_path = final_audio.parent / "word-alignment-r1.json"
+            self._atomic_text(alignment_path, json.dumps(result.alignment, ensure_ascii=False, indent=2))
         now = utc_now()
         metadata = {
             "schema_version": 2,
@@ -187,6 +191,11 @@ class LibraryStore:
             "decode_seconds": result.decode_seconds,
             "units": [asdict(unit) for unit in units],
             "timeline": [entry.to_dict() for entry in result.timeline],
+            "alignment": {
+                "schema_version": 1,
+                "status": result.alignment["status"] if result.alignment is not None else "not_available",
+                "artifact": self._relative(alignment_path) if alignment_path else None,
+            },
             "generation_config": {
                 "language": LANGUAGE,
                 "max_new_tokens": MAX_NEW_TOKENS,

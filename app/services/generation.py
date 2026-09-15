@@ -17,6 +17,7 @@ from app.config import ASR_VALIDATION_ENABLED
 from app.validation.manager import AsrManager
 from app.services.asr_validation import AsrValidationCoordinator
 from app.pronunciation import PT_BR_RESOLVER, PronunciationResolver, resolve_speech_plan
+from app.alignment import build_global_alignment
 
 
 ProgressCallback = Callable[[GenerationProgress], None]
@@ -176,6 +177,7 @@ class GenerationService:
             initial.generation_seconds + outcome.generation_seconds,
             initial.decode_seconds + outcome.decode_seconds,
             tuple(timeline), outcome.metadata, resolved.metadata,
+            build_global_alignment(plan, resolved.results, outcome.asr_results or {}, timeline),
         )
 
     def generate_persisted(

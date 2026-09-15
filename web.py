@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+import json
+import os
 import threading
 import unicodedata
 import webbrowser
@@ -238,6 +240,11 @@ def system_status():
     return get_system_status_service().status(get_operational_settings_store().load())
 
 
+@app.get("/api/health")
+def health():
+    return {"application": "markdown-tts", "status": "ok"}
+
+
 @app.get("/api/operational-settings")
 def operational_settings():
     current = get_operational_settings_store().load()
@@ -455,6 +462,23 @@ def persisted_generation(generation_id: str):
     return data
 
 
+@app.get("/api/generations/{generation_id}/alignment")
+def generation_alignment(generation_id: str):
+    library = get_library()
+    generation = library.generations.get(generation_id)
+    if generation is None:
+        raise HTTPException(status_code=404, detail="Geração não encontrada.")
+    if generation.status != "completed" or not generation.metadata_path:
+        return {"schema_version": 1, "status": "not_available", "units": []}
+    descriptor = library.metadata(generation).get("alignment") or {}
+    if not descriptor.get("artifact"):
+        return {"schema_version": 1, "status": "not_available", "units": []}
+    try:
+        return json.loads(library.resolve(descriptor["artifact"]).read_text(encoding="utf-8"))
+    except (FileNotFoundError, ValueError, json.JSONDecodeError):
+        return {"schema_version": 1, "status": "not_available", "units": []}
+
+
 @app.post("/api/generations/{generation_id}/units/{unit_id}/regenerate")
 def regenerate_unit(generation_id: str, unit_id: int):
     try:
@@ -662,10 +686,11 @@ if __name__ == "__main__":
             "http://127.0.0.1:7860"
         )
 
-    threading.Timer(
-        1.5,
-        open_browser,
-    ).start()
+    if os.environ.get("MARKDOWN_TTS_NO_BROWSER") != "1":
+        threading.Timer(
+            1.5,
+            open_browser,
+        ).start()
 
     uvicorn.run(
         app,

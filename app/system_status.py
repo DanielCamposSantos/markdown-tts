@@ -16,7 +16,7 @@ from app.operational import OperationalSettings
 from app.reproducibility import baseline_lock_consistent
 
 
-STATUS_CACHE_SECONDS = 3.0
+STATUS_CACHE_SECONDS = 0.9
 DISK_WARNING_BYTES = 10 * 1024**3
 DISK_BLOCK_BYTES = 2 * 1024**3
 

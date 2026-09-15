@@ -392,6 +392,13 @@ foram adicionados sem alterar a metodologia de sintese.
 
 ## Fase 14 - Palavra e desktop futuro
 
+**Estado:** concluida. Word timestamps do ASR alimentam alignment de display
+pronunciation-aware com fallback legacy, e um launcher Windows localhost-only
+reutiliza a UI FastAPI em browser app mode. O hotfix 14.1 consolidou o fluxo em
+uma GUI Tkinter unica: toggle start/stop, ownership por Windows Job Object,
+auto-shutdown no fechamento/crash e atalho opcional. VRAM usa polling adaptativo
+de 4 s/1 s e cache thread-safe de 0,9 s.
+
 **Objetivo:** preparar extensoes posteriores sem acoplar o MVP.
 
 **Motivacao:** alinhamento palavra a palavra e empacotamento sao desejaveis, mas nao sao pre-requisitos da biblioteca.
@@ -411,6 +418,11 @@ foram adicionados sem alterar a metodologia de sintese.
 **Rollback:** nao habilitar extensoes e manter o navegador.
 
 **Nao mudar:** contrato de timestamps de frase e pipeline MOSS.
+
+**Proximo passo apos aprovacao humana do launcher:** Final Cleanup / Clean
+Install Reset e Release Audit. Nenhuma nova feature deve ser
+iniciada antes dessa auditoria; fixtures, modelos e artefatos permanecem
+preservados ate la.
 
 ## Ordem recomendada resumida
 

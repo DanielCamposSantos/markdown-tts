@@ -909,6 +909,9 @@ select {
 }
 
 .regenerate-button:disabled { opacity: 0.35; cursor: not-allowed; }
+.word-token { border-radius: 3px; }
+.aligned-word { cursor: pointer; }
+.aligned-word.active-word { color: #081018; background: #9bc2f4; box-shadow: 0 0 0 2px rgba(155, 194, 244, 0.18); }
 
 .library-row,
 .transport-controls,
