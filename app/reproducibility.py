@@ -19,6 +19,11 @@ def load_baseline(path: Path = BASELINE_PATH) -> dict:
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
+def baseline_lock_consistent(root: Path = ROOT) -> bool:
+    baseline = load_baseline(Path(root) / "reproducibility/baseline.json")
+    return file_sha256(Path(root) / baseline["dependencies"]["lock_path"]) == baseline["dependencies"]["lock_sha256"]
+
+
 def generation_reproducibility(*, asr_used: bool) -> dict:
     baseline = load_baseline()
     result = {

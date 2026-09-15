@@ -48,6 +48,9 @@ from app.persistence.library import utc_now
 from app.playback import active_unit_at, unit_id
 from app.markdown_preview import MAX_MARKDOWN_INPUT_BYTES, render_markdown_preview
 from app.maintenance.voice_integrity import VoiceIntegrityService
+from app.operational import OperationalSettingsStore, PRESETS
+from app.system_status import ReadinessError, SystemStatusService
+from app.validation.manager import AsrManager
 
 if TYPE_CHECKING:
     from app.services.generation import TtsEngine
@@ -125,11 +128,18 @@ class PlaybackUpdateRequest(BaseModel):
     playback_rate: Literal[0.75, 1.0, 1.25, 1.5, 1.75, 2.0]
 
 
+class PresetRequest(BaseModel):
+    preset: Literal["standard", "validated"]
+
+
 engine: TtsEngine | None = None
 model_manager: ModelManager | None = None
 library_store: LibraryStore | None = None
 job_worker: JobWorker | None = None
 voice_integrity_service: VoiceIntegrityService | None = None
+asr_manager: AsrManager | None = None
+operational_settings_store: OperationalSettingsStore | None = None
+system_status_service: SystemStatusService | None = None
 
 
 def get_voice_integrity() -> VoiceIntegrityService:
@@ -140,6 +150,31 @@ def get_voice_integrity() -> VoiceIntegrityService:
             ROOT / "voices" / "narrator_reference.manifest.json",
         )
     return voice_integrity_service
+
+
+def get_asr_manager() -> AsrManager:
+    global asr_manager
+    if asr_manager is None:
+        asr_manager = AsrManager()
+    return asr_manager
+
+
+def get_operational_settings_store() -> OperationalSettingsStore:
+    global operational_settings_store
+    if operational_settings_store is None:
+        operational_settings_store = OperationalSettingsStore(LIBRARY_DIR / "operational-settings.json")
+    return operational_settings_store
+
+
+def get_system_status_service() -> SystemStatusService:
+    global system_status_service
+    if system_status_service is None:
+        system_status_service = SystemStatusService(
+            model_status=get_model_manager().status,
+            asr_status=get_asr_manager().status,
+            voice_check=get_voice_integrity().check,
+        )
+    return system_status_service
 
 
 def get_engine() -> TtsEngine:
@@ -185,7 +220,10 @@ def get_worker() -> JobWorker:
     if job_worker is None or job_worker.library is not library:
         job_worker = JobWorker(
             library,
-            service_factory=lambda: GenerationService(get_engine()),
+            service_factory=lambda: GenerationService(
+                get_engine(), asr_manager=get_asr_manager(),
+                asr_enabled=get_operational_settings_store().load().asr_enabled,
+            ),
         )
     return job_worker
 
@@ -193,6 +231,22 @@ def get_worker() -> JobWorker:
 @app.get("/api/model/status")
 def model_status():
     return {**get_model_manager().status(), "voice_integrity": get_voice_integrity().check().to_dict()}
+
+
+@app.get("/api/system-status")
+def system_status():
+    return get_system_status_service().status(get_operational_settings_store().load())
+
+
+@app.get("/api/operational-settings")
+def operational_settings():
+    current = get_operational_settings_store().load()
+    return {"current": current.to_dict(), "presets": [{"id": key, **value} for key, value in PRESETS.items()]}
+
+
+@app.put("/api/operational-settings")
+def update_operational_settings(request: PresetRequest):
+    return get_operational_settings_store().save(request.preset).to_dict()
 
 
 def safe_filename(
@@ -314,6 +368,11 @@ def generate(
     stem = safe_filename(
         request.filename
     )
+    settings = get_operational_settings_store().load()
+    try:
+        get_system_status_service().require_ready(settings)
+    except ReadinessError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     library = get_library()
     document, generation_record, _, _ = library.create(
         stem,
@@ -398,6 +457,10 @@ def persisted_generation(generation_id: str):
 
 @app.post("/api/generations/{generation_id}/units/{unit_id}/regenerate")
 def regenerate_unit(generation_id: str, unit_id: int):
+    try:
+        get_system_status_service().require_ready(get_operational_settings_store().load())
+    except ReadinessError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     library = get_library()
     generation = library.generations.get(generation_id)
     if generation is None:

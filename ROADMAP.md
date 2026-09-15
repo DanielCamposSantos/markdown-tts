@@ -366,6 +366,10 @@ foram adicionados sem reconstruir o ambiente validado.
 
 ## Fase 13 - GPU status, presets e UX
 
+**Estado:** concluida. Status operacional com telemetria global cacheada,
+readiness/preflight, estados MOSS/ASR e presets persistentes Padrao/Validacao ASR
+foram adicionados sem alterar a metodologia de sintese.
+
 **Objetivo:** oferecer uma experiencia diaria mais clara e acessivel.
 
 **Motivacao:** biblioteca, fila e validacao exigem estados visiveis; a interface atual e funcional, mas minima.

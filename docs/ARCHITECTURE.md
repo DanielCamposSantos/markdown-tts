@@ -294,6 +294,20 @@ Continuar com JavaScript vanilla enquanto o fluxo couber nele. Separar visualmen
 
 O player deve persistir velocidade e posicao, oferecer anterior/proxima, +/-10 s, atalhos, foco acessivel, clique em unidade, scroll e fallback quando audio/timeline estiverem indisponiveis. Playback rate nunca deve reexportar o arquivo.
 
+## CURRENT: status e configuracao operacional
+
+`SystemStatusService` agrega telemetria GPU global, disponibilidade local,
+integridade da voz, estados do `ModelManager`/`AsrManager`, disco e readiness.
+Dados de hardware/paths sao sondados com cache de tres segundos; respostas
+publicas nao incluem paths, hashes, documentos ou erros internos. A UI atualiza
+esse estado a cada quatro segundos, independentemente do polling rapido do job.
+
+`OperationalSettingsStore` persiste atomicamente apenas `standard` ou
+`validated`. A factory do worker le a escolha ao iniciar a proxima operacao e
+compartilha um `AsrManager` observavel. O default continua ASR off. Essa camada
+nao e fonte metodologica: metadata de reproducibilidade e `asr_config_id`
+continuam descrevendo o que realmente foi executado.
+
 ## TARGET: crash recovery e artefatos
 
 Eventos relevantes:

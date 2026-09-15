@@ -33,9 +33,19 @@
         </div>
     </div>
 
-    <div class="engine-status">
-        <span class="status-dot"></span>
-        Local
+    <div class="operational-status" role="status" aria-live="polite" aria-label="Status operacional">
+        <span id="readinessStatus" class="status-chip"><span class="status-dot"></span>Verificando</span>
+        <span id="gpuStatus" class="status-item">GPU: indisponível</span>
+        <span id="vramStatus" class="status-item">VRAM global: indisponível</span>
+        <span id="mossStatus" class="status-item">MOSS: verificando</span>
+        <span id="asrStatus" class="status-item">ASR: verificando</span>
+        <span id="voiceStatus" class="status-item">Voz: verificando</span>
+        <label class="preset-control" for="presetSelect">Preset
+            <select id="presetSelect" aria-label="Preset operacional">
+                <option value="standard">Padrão</option>
+                <option value="validated">Validação ASR</option>
+            </select>
+        </label>
     </div>
 </header>
 

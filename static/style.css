@@ -144,16 +144,22 @@ select {
 }
 
 
-.engine-status {
+.operational-status {
     display: flex;
     align-items: center;
-
-    gap: 8px;
-
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 7px 12px;
     color: var(--muted);
-
-    font-size: 13px;
+    font-size: 12px;
 }
+
+.status-chip, .status-item, .preset-control { white-space: nowrap; }
+.status-chip { display: inline-flex; align-items: center; gap: 7px; font-weight: 700; }
+.status-chip.status-error { color: var(--danger); }
+.status-chip.status-error .status-dot { background: var(--danger); box-shadow: none; }
+.preset-control { display: inline-flex; align-items: center; gap: 6px; }
+.preset-control select { color: var(--text); background: var(--panel-2); border: 1px solid var(--border); border-radius: 7px; padding: 5px 7px; }
 
 
 .status-dot {
@@ -866,9 +872,7 @@ select {
             16px;
     }
 
-    .engine-status {
-        display: none;
-    }
+    .operational-status .status-item { display: none; }
 
     .workspace {
         width:

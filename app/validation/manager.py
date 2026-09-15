@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Callable
+import threading
 
 from app.config import ASR_BEAM_SIZE, ASR_COMPUTE_TYPE, ASR_MODEL_PATH
 from app.validation.asr import AsrEngine, FasterWhisperAsrEngine
@@ -23,6 +24,9 @@ class AsrManager:
             )
         )
         self._engine: AsrEngine | None = None
+        self._state = "unloaded"
+        self._last_error: str | None = None
+        self._lock = threading.RLock()
 
     def preflight(self) -> None:
         if not self._model_path.is_dir():
@@ -30,28 +34,66 @@ class AsrManager:
 
     def load(self) -> AsrEngine:
         self.preflight()
+        with self._lock:
+            if self._engine is not None:
+                return self._engine
+            self._state = "loading"
         if self._engine is None:
             try:
-                self._engine = self._factory()
-                load = getattr(self._engine, "load", None)
+                engine = self._factory()
+                load = getattr(engine, "load", None)
                 if callable(load):
                     load()
             except Exception as exc:
-                self.unload()
+                with self._lock:
+                    self._engine = None
+                    self._state = "error"
+                    self._last_error = str(exc)
                 raise AsrBackendError(f"Falha ao carregar backend ASR: {exc}") from exc
+            with self._lock:
+                self._engine = engine
+                self._state = "ready"
+                self._last_error = None
         return self._engine
 
     def transcribe(self, audio_path: Path, language: str):
         try:
-            return self.load().transcribe(audio_path, language=language)
+            engine = self.load()
+            with self._lock:
+                self._state = "validating"
+            result = engine.transcribe(audio_path, language=language)
+            with self._lock:
+                self._state = "ready"
+            return result
         except AsrBackendError:
             raise
         except Exception as exc:
+            with self._lock:
+                self._state = "error"
+                self._last_error = str(exc)
             raise AsrBackendError(f"Falha no backend ASR: {exc}") from exc
 
     def unload(self) -> None:
-        engine, self._engine = self._engine, None
+        with self._lock:
+            engine, self._engine = self._engine, None
+            self._state = "unloading" if engine is not None else "unloaded"
         if engine is not None:
             unload = getattr(engine, "unload", None)
-            if callable(unload):
-                unload()
+            try:
+                if callable(unload):
+                    unload()
+            except Exception as exc:
+                with self._lock:
+                    self._state = "error"
+                    self._last_error = str(exc)
+                raise
+        with self._lock:
+            self._state = "unloaded"
+
+    def status(self) -> dict:
+        with self._lock:
+            return {
+                "state": self._state,
+                "model_loaded": self._engine is not None,
+                "error": self._last_error,
+            }

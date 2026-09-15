@@ -13,12 +13,60 @@ const openGenerationButton = $("openGenerationButton");
 const markdownPreview = $("markdownPreview"), previewTab = $("previewTab"), speechPlanTab = $("speechPlanTab");
 const markdownDropZone = $("markdownDropZone"), markdownFileInput = $("markdownFileInput");
 const openMarkdownButton = $("openMarkdownButton"), fileError = $("fileError");
+const readinessStatus = $("readinessStatus"), gpuStatus = $("gpuStatus"), vramStatus = $("vramStatus");
+const mossStatus = $("mossStatus"), asrStatus = $("asrStatus"), voiceStatus = $("voiceStatus"), presetSelect = $("presetSelect");
 
 let previewTimer, pollTimer, activeJobId, activeGenerationId, pendingPlayback;
 let timeline = [], activeUnitIndex = -1, lastPlaybackSave = 0, playbackSaveInFlight = false;
 let playbackSavePending = false;
 let regenerationAvailable = false, regenerationBusy = false;
 let previewSequence = 0, activePreviewTab = "preview", filenameWasEdited = false, dragDepth = 0;
+let systemStatusTimer, latestSystemStatus;
+
+const modelStateLabels = {unloaded: "descarregado", loading: "carregando", ready: "pronto", generating: "gerando", unloading: "descarregando", error: "erro"};
+const asrStateLabels = {unloaded: "descarregado", loading: "carregando", ready: "pronto", validating: "validando", unloading: "descarregando", error: "erro"};
+function formatGigabytes(megabytes) { return `${(Number(megabytes) / 1024).toFixed(1)} GB`; }
+function renderSystemStatus(status) {
+    latestSystemStatus = status;
+    const ready = status.readiness.ready;
+    readinessStatus.className = `status-chip ${ready ? "status-ok" : "status-error"}`;
+    readinessStatus.innerHTML = `<span class="status-dot"></span>${ready ? "Pronto" : "Atenção"}`;
+    gpuStatus.textContent = `GPU: ${status.system.gpu_name || "indisponível"}`;
+    vramStatus.textContent = status.system.vram_total_mb == null ? "VRAM global: indisponível" : `VRAM global: ${formatGigabytes(status.system.vram_used_mb)} / ${formatGigabytes(status.system.vram_total_mb)}`;
+    mossStatus.textContent = `MOSS: ${modelStateLabels[status.tts.state] || status.tts.state}`;
+    asrStatus.textContent = `ASR: ${status.asr.enabled ? (asrStateLabels[status.asr.state] || status.asr.state) : "desligado"}`;
+    voiceStatus.textContent = `Voz: ${status.voice.status === "healthy" ? "OK" : "erro"}`;
+    readinessStatus.title = [...status.readiness.errors, ...status.readiness.warnings].join(" ");
+}
+async function refreshSystemStatus(schedule = true) {
+    clearTimeout(systemStatusTimer);
+    try {
+        const response = await fetch("/api/system-status");
+        if (!response.ok) throw new Error("Status operacional indisponível.");
+        renderSystemStatus(await response.json());
+    } catch (error) {
+        readinessStatus.className = "status-chip status-error";
+        readinessStatus.textContent = "Status indisponível";
+        readinessStatus.title = error.message;
+    } finally {
+        if (schedule) systemStatusTimer = setTimeout(refreshSystemStatus, 4000);
+    }
+}
+async function loadOperationalSettings() {
+    const response = await fetch("/api/operational-settings");
+    if (response.ok) presetSelect.value = (await response.json()).current.preset;
+}
+async function updatePreset() {
+    presetSelect.disabled = true;
+    try {
+        const response = await fetch("/api/operational-settings", {method: "PUT", headers: {"Content-Type": "application/json"}, body: JSON.stringify({preset: presetSelect.value})});
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || "Não foi possível salvar o preset.");
+        await refreshSystemStatus(false);
+    } catch (error) {
+        alert(error.message); await loadOperationalSettings();
+    } finally { presetSelect.disabled = false; }
+}
 
 function escapeHtml(value) {
     return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;")
@@ -205,6 +253,10 @@ async function startGeneration() {
     generationCard.classList.remove("hidden"); playerDock.classList.add("hidden");
     setProgress(0, "Criando tarefa...");
     try {
+        await refreshSystemStatus(false);
+        if (!latestSystemStatus || !latestSystemStatus.readiness.ready) {
+            throw new Error(latestSystemStatus?.readiness.errors.join(" ") || "Sistema não está pronto para gerar.");
+        }
         const response = await fetch("/api/generate", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({markdown, filename: filenameInput.value.trim() || "narracao"})});
         const data = await response.json();
         if (!response.ok) throw new Error(data.detail || "Falha ao iniciar.");
@@ -363,6 +415,7 @@ markdownDropZone.addEventListener("drop", event => {
     if (event.dataTransfer.files[0]) loadMarkdownFile(event.dataTransfer.files[0]);
 });
 generateButton.addEventListener("click", startGeneration);
+presetSelect.addEventListener("change", updatePreset);
 cancelJobButton.addEventListener("click", cancelActiveJob);
 generationSelect.addEventListener("change", () => { openGenerationButton.disabled = !generationSelect.value; });
 openGenerationButton.addEventListener("click", () => loadGeneration(generationSelect.value).catch(error => alert(error.message)));
@@ -405,4 +458,4 @@ document.addEventListener("keydown", event => {
 });
 window.addEventListener("beforeunload", () => savePlayback(true));
 
-loadLibrary(); updatePreview();
+loadLibrary(); updatePreview(); loadOperationalSettings(); refreshSystemStatus();

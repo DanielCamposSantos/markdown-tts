@@ -351,6 +351,21 @@ em `reproducibility/baseline.json`. Detalhes e classificacao das dependencias:
 O setup usa o indice oficial cu128 para PyTorch, nao baixa MOSS/Faster-Whisper,
 nao altera o PATH global e nunca substitui a voz canonica.
 
+## Status operacional e presets
+
+A barra compacta consulta `GET /api/system-status` a cada quatro segundos e
+mostra GPU, VRAM global, estado real do MOSS/ASR, voz e readiness. Em Windows a
+VRAM e rotulada como global, nao como consumo exclusivo do app. A coleta tem
+cache de tres segundos e falha de telemetria aparece como indisponivel sem
+derrubar o servidor.
+
+Existem somente dois presets operacionais: **Padrao**, com ASR desligado, e
+**Validacao ASR**, que habilita o backend ja existente para as proximas
+geracoes. A escolha e persistida em `library/operational-settings.json`. Presets
+nao alteram modelo, voz, idioma, sampling, seeds, guard, perfil de pronuncia ou
+thresholds. O preflight recusa a fila antes de carregar modelos quando faltar
+voz, CUDA, MOSS, FFmpeg, baseline, escrita/espaco minimo ou ASR solicitado.
+
 ## Roadmap
 
 A evolucao planejada deve acontecer em fases pequenas, sempre preservando o comportamento e a qualidade atuais:

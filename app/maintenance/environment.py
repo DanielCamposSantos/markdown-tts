@@ -11,7 +11,7 @@ from typing import Callable
 from app.config import ROOT
 from app.maintenance.voice_integrity import VoiceIntegrityService
 from app.pronunciation import PT_BR_PROFILE
-from app.reproducibility import file_sha256, load_baseline
+from app.reproducibility import baseline_lock_consistent, file_sha256, load_baseline
 
 
 CRITICAL_DISTRIBUTIONS = (
@@ -79,7 +79,7 @@ class EnvironmentChecker:
         checks.append(EnvironmentCheckItem("voice", "PASS" if voice_result.healthy else "FAIL", voice_result.status))
         checks.append(EnvironmentCheckItem("pronunciation", "PASS" if PT_BR_PROFILE == baseline["pronunciation"]["profile"] else "FAIL", PT_BR_PROFILE))
         actual_lock = file_sha256(self.root / baseline["dependencies"]["lock_path"])
-        checks.append(EnvironmentCheckItem("dependency_lock", "PASS" if actual_lock == baseline["dependencies"]["lock_sha256"] else "FAIL", actual_lock))
+        checks.append(EnvironmentCheckItem("dependency_lock", "PASS" if baseline_lock_consistent(self.root) else "FAIL", actual_lock))
         if require_asr:
             model = self.root / baseline["asr"]["model_path"]
             checks.append(EnvironmentCheckItem("asr_model", "PASS" if model.is_dir() else "FAIL", "present" if model.is_dir() else "missing"))
