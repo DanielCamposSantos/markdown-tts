@@ -326,7 +326,19 @@ voz, tamanhos e hashes, e a verificacao executa `PRAGMA quick_check`. Restore e
 CLI: verifica, recusa jobs ativos, cria backup de seguranca, prepara em staging e
 faz swap com rollback. A voz exige autorizacao separada.
 
-## TARGET: dependencias e testes
+## CURRENT: baseline reproduzivel
+
+`requirements/runtime.txt`, `asr.txt` e `dev.txt` declaram intencao; um unico
+`constraints.txt` fixa as versoes validadas. `reproducibility/baseline.json`
+amarra seu hash as identidades de Python, plataforma, modelos, voz, pronuncia,
+sampling, guard e ASR. Novas metadata incluem somente IDs e hashes logicos; uma
+geracao legacy sem `reproducibility` continua valida.
+
+`environment-check` compara ambiente e baseline sem mutacao. O setup Windows
+instala Torch pelo indice oficial cu128 e oferece ASR/dev por flags, sem modelos
+ou PATH global. CTranslate2 usa `os.add_dll_directory(torch/lib)` por processo.
+
+## TARGET: validacao de release
 
 `environment-current.txt` deve continuar sendo tratado como evidencia do ambiente atual. Uma futura estrategia de pinning deve separar dependencias diretas da aplicacao, wheel de PyTorch/CUDA, versoes de Transformers/Hugging Face Hub, `markdown-it-py`, FastAPI, Uvicorn e `soundfile`, alem da revisao dos remote-code files MOSS.
 

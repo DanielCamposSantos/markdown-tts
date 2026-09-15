@@ -109,6 +109,8 @@ def test_completed_generation_metadata_round_trip_and_restart(library):
     assert metadata["voice"]["sha256"] == file_sha256(library.voice_reference)
     assert "asr_validation" not in metadata
     assert "pronunciation" not in metadata
+    assert metadata["reproducibility"]["baseline_schema_version"] == 1
+    assert metadata["reproducibility"]["tts_model_id"] == metadata["model"]["id"]
     assert str(library.root) not in json.dumps(metadata)
     assert audio.is_file()
 

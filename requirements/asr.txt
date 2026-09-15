@@ -1,0 +1,7 @@
+# Optional: install only when local ASR validation is wanted.
+faster-whisper
+ctranslate2
+av
+onnxruntime
+protobuf
+flatbuffers

@@ -63,3 +63,7 @@ ASR_LANGUAGE = "pt"
 ASR_BEAM_SIZE = 5
 ASR_MAX_AUTO_REGENERATION_ROUNDS = 2
 ASR_AUTO_REGENERATION_SEED_OFFSET = 1_000_001
+
+# Stable identifiers only; algorithms and thresholds remain unchanged.
+AUDIO_GUARD_POLICY_ID = "audio-guard-v1"
+ASR_VALIDATOR_POLICY_ID = "asr-validator-v1"

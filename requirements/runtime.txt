@@ -1,0 +1,25 @@
+# Install torch/torchaudio from the official CUDA index first; see setup_windows.ps1.
+torch
+torchaudio
+transformers
+huggingface-hub
+tokenizers
+numpy
+soundfile
+fastapi
+uvicorn
+markdown-it-py
+pydantic
+python-multipart
+# Direct dependencies declared by the validated local MOSS checkout.
+safetensors
+orjson
+tqdm
+PyYAML
+einops
+scipy
+librosa
+tiktoken
+psutil
+packaging
+ninja

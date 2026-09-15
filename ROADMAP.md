@@ -340,6 +340,10 @@ modelos e diagnosticos necessarios as fases restantes devem ser preservados.
 
 ## Fase 12 - Reprodutibilidade e compatibilidade
 
+**Estado:** concluida. Requirements deliberados, constraints exatas, baseline
+versionado, metadata de reproducibilidade, diagnostico read-only e setup Windows
+foram adicionados sem reconstruir o ambiente validado.
+
 **Objetivo:** congelar o ambiente sem quebrar o snapshot funcional.
 
 **Motivacao:** `environment-current.txt` e diagnostico, nao lock de instalacao; versoes flutuantes podem mudar remote code e audio.

@@ -6,6 +6,7 @@ import json
 from app.config import LIBRARY_DIR, REFERENCE_AUDIO, ROOT
 from app.maintenance.backup import BackupService, RestoreService, verify_backup
 from app.maintenance.retention import RetentionService
+from app.maintenance.environment import EnvironmentChecker, format_report
 
 
 def services():
@@ -21,8 +22,13 @@ def main() -> int:
     sub.add_parser("retention-scan")
     cleanup = sub.add_parser("cleanup-safe"); cleanup.add_argument("--apply", action="store_true")
     restore = sub.add_parser("restore"); restore.add_argument("path"); restore.add_argument("--apply", action="store_true"); restore.add_argument("--restore-voice", action="store_true")
+    environment = sub.add_parser("environment-check"); environment.add_argument("--json", action="store_true"); environment.add_argument("--require-asr", action="store_true")
     args = parser.parse_args()
     backup, retention = services()
+    if args.command == "environment-check":
+        report = EnvironmentChecker().run(require_asr=args.require_asr)
+        print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2) if args.json else format_report(report))
+        return 0 if report.status != "FAIL" else 1
     if args.command == "backup":
         print(backup.create()); return 0
     if args.command == "verify-backup":

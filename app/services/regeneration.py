@@ -14,6 +14,7 @@ from app.config import ASR_VALIDATION_ENABLED
 from app.services.asr_validation import AsrValidationCoordinator
 from app.validation.manager import AsrManager
 from app.pronunciation import PT_BR_RESOLVER, PronunciationResolver, resolve_speech_plan
+from app.reproducibility import generation_reproducibility
 
 
 MANUAL_REGENERATION_SEED_OFFSET = 100_000
@@ -163,6 +164,9 @@ class RegenerationService:
                 "profile": resolved.metadata["profile"],
                 "applied_units": applied_units,
             }
+            revised["reproducibility"] = generation_reproducibility(
+                asr_used=asr_metadata is not None
+            )
             staged_metadata = staging / final_metadata.name
             staged_metadata.write_text(json.dumps(revised, ensure_ascii=False, indent=2), encoding="utf-8")
             json.loads(staged_metadata.read_text(encoding="utf-8"))

@@ -333,6 +333,24 @@ Documentos, SQLite e publicados sao autoridade; a voz e ativo protegido; staging
 conhecido e antigo e descartavel. Fixtures, benchmarks, modelos e ferramentas sao
 artefatos de desenvolvimento. Desconhecidos e geracoes legacy sao preservados.
 
+## Ambiente reproduzivel
+
+O suporte validado e Windows 11 com Python `>=3.12,<3.13`. Dependencias diretas,
+ASR opcional, desenvolvimento e constraints exatas ficam em `requirements/`;
+`environment-current.txt` e apenas evidencia historica. O baseline auditavel esta
+em `reproducibility/baseline.json`. Detalhes e classificacao das dependencias:
+`docs/DEPENDENCIES.md`.
+
+```powershell
+.\scripts\setup_windows.ps1 -InstallDev
+.\scripts\setup_windows.ps1 -InstallAsr -InstallDev
+.\.venv\Scripts\python.exe -m app.maintenance environment-check
+.\.venv\Scripts\python.exe -m app.maintenance environment-check --json
+```
+
+O setup usa o indice oficial cu128 para PyTorch, nao baixa MOSS/Faster-Whisper,
+nao altera o PATH global e nunca substitui a voz canonica.
+
 ## Roadmap
 
 A evolucao planejada deve acontecer em fases pequenas, sempre preservando o comportamento e a qualidade atuais:

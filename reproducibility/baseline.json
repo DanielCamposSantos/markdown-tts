@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "baseline_id": "windows-py312-cu128-8741eca68ca7",
+  "python": {
+    "supported": ">=3.12,<3.13",
+    "validated": "3.12.10"
+  },
+  "platform": {
+    "os": "Windows 11",
+    "gpu": "NVIDIA GeForce RTX 3060 12 GB",
+    "torch_cuda_runtime": "12.8"
+  },
+  "tts": {
+    "model_id": "OpenMOSS-Team/MOSS-TTS-Local-Transformer-v1.5",
+    "model_revision": "be7766a6735b98bd793f7c79fb720b4d0f5d13b8",
+    "vendor_path": "vendor/MOSS-TTS",
+    "vendor_commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+    "language": "Portuguese",
+    "dtype": "bfloat16",
+    "audio_tokenizer_dtype": "float32",
+    "direct_tts_per_unit": true,
+    "sampling": {
+      "do_sample": true,
+      "max_new_tokens": 1000,
+      "audio_temperature": 1.7,
+      "audio_top_p": 0.8,
+      "audio_top_k": 25,
+      "audio_repetition_penalty": 1.0
+    },
+    "guard_policy": "audio-guard-v1"
+  },
+  "voice": {
+    "voice_id": "narrator-reference-v1",
+    "path": "voices/narrator_reference.wav",
+    "manifest_schema_version": 1,
+    "sha256": "af7a01c5d4d572372a7e6e46e6b6a6ee6984a250668e0477c9f89e8304f82fb8"
+  },
+  "pronunciation": {
+    "profile": "pt-BR-v3"
+  },
+  "asr": {
+    "config_id": "faster-whisper-medium-int8-float16-v1",
+    "backend": "faster-whisper",
+    "model": "medium",
+    "model_path": "benchmarks/models/faster-whisper-medium",
+    "device": "cuda",
+    "compute_type": "int8_float16",
+    "language": "pt",
+    "beam_size": 5,
+    "vad": false,
+    "enabled_by_default": false,
+    "validator_policy": "asr-validator-v1"
+  },
+  "models": {
+    "moss": {
+      "logical_cache": "huggingface/OpenMOSS-Team/MOSS-TTS-Local-Transformer-v1.5",
+      "size_bytes": 9112431502,
+      "config_sha256": "826f81f163b1b557ad13f83c4f35008f4fee5a6cb6311b4316ff3dbb25149411",
+      "processor_config_sha256": "db574bfebad009e05193196a63a4eeecd353eeca177ccfff28b9379d595d88b7"
+    },
+    "faster_whisper_medium": {
+      "size_bytes": 1530575217,
+      "config_sha256": "3622a2ddc41ec0e0fd4e68c13c6830f03b90c38d89aaad184de02c8c642cf807",
+      "tokenizer_sha256": "fb7b63191e9bb045082c79fd742a3106a12c99513ab30df4a0d47fa6cb6fd0ab",
+      "vocabulary_sha256": "34ce3fe1c5041027b3f8d42912270993f986dbc4bb34cf27f951e34a1e453913"
+    }
+  },
+  "dependencies": {
+    "lock_path": "requirements/constraints.txt",
+    "lock_sha256": "8741eca68ca7ccfaaaa2d10d9fcfb9ff63342da27e32963020242930f6a5b5eb"
+  }
+}

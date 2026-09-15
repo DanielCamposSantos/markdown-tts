@@ -22,6 +22,7 @@ from app.persistence.repositories import (
     GenerationRepository,
     PlaybackRepository,
 )
+from app.reproducibility import generation_reproducibility
 
 
 def utc_now() -> str:
@@ -201,6 +202,9 @@ class LibraryStore:
             metadata["asr_validation"] = result.asr_validation
         if result.pronunciation is not None:
             metadata["pronunciation"] = result.pronunciation
+        metadata["reproducibility"] = generation_reproducibility(
+            asr_used=result.asr_validation is not None
+        )
         self._atomic_text(metadata_path, json.dumps(metadata, ensure_ascii=False, indent=2))
         json.loads(metadata_path.read_text(encoding="utf-8"))
         self.generations.complete(
