@@ -29,7 +29,7 @@ def test_official_requirements_exist_and_are_parseable():
         assert all(" " not in line or line.startswith("-r ") for line in lines)
 
 
-@pytest.mark.parametrize("package", ["torch", "transformers", "numpy", "soundfile", "faster-whisper", "ctranslate2"])
+@pytest.mark.parametrize("package", ["torch", "transformers", "numpy", "soundfile", "faster-whisper", "ctranslate2", "wsproto"])
 def test_critical_packages_have_exact_pins(package):
     pins = {line.split("==", 1)[0].lower(): line.split("==", 1)[1] for line in requirement_lines("constraints.txt") if "==" in line}
     assert package in pins and pins[package] and not re.search(r"[<>=,]", pins[package])

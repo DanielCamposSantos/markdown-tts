@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 from pathlib import Path
 from typing import Callable, Mapping
 
@@ -19,6 +20,9 @@ from app.validation.validator import ValidationResult, validate_acceptable_resul
 
 class AsrValidationFailedError(RuntimeError):
     pass
+
+
+logger = logging.getLogger("uvicorn.error")
 
 
 @dataclass(frozen=True)
@@ -68,6 +72,7 @@ class AsrValidationCoordinator:
         generation_seconds = decode_seconds = 0.0
         try:
             for round_number in range(ASR_MAX_AUTO_REGENERATION_ROUNDS + 1):
+                logger.info("asr_round=%s pending_units=%s", round_number, len(pending))
                 _cancel(should_cancel)
                 tts_engine.unload()
                 _cancel(should_cancel)
@@ -93,13 +98,16 @@ class AsrValidationCoordinator:
                     latest_asr[unit.index] = asr_result
                     if result.status == "fail":
                         failures.append(unit)
+                        logger.info("asr_fail unit_id=%s round=%s similarity=%.3f coverage=%.3f reasons=%s", unit.index, round_number, result.similarity_score, result.token_coverage, result.reasons)
                 if not failures:
                     break
                 if round_number >= ASR_MAX_AUTO_REGENERATION_ROUNDS:
+                    logger.error("asr_exhausted round=%s failed_units=%s", round_number, [unit.index for unit in failures])
                     ids = ", ".join(str(unit.index) for unit in failures)
                     raise AsrValidationFailedError(f"Validação ASR falhou após retries nas unidades: {ids}")
                 _cancel(should_cancel)
                 self.asr_manager.unload()
+                logger.info("model_transition=asr_to_moss auto_regeneration_round=%s failed_units=%s", round_number + 1, [unit.index for unit in failures])
                 _cancel(should_cancel)
                 if progress_callback:
                     progress_callback("model_loading", 0, len(failures), f"Corrigindo {len(failures)} unidades com falha de validação")
@@ -116,6 +124,7 @@ class AsrValidationCoordinator:
                     rounds_by_unit[unit.index] += 1
                     regenerated.add(unit.index)
                 pending = failures
+                logger.info("auto_regeneration_completed round=%s units=%s", round_number + 1, [unit.index for unit in failures])
             counts = {status: sum(result.status == status for result in latest.values()) for status in ("pass", "warn", "fail")}
             return AsrValidationOutcome({
                 "enabled": True,

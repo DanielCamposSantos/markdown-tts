@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import json
 import os
+import logging
 import threading
 import unicodedata
 import webbrowser
@@ -15,6 +16,8 @@ import uvicorn
 from fastapi import (
     FastAPI,
     HTTPException,
+    WebSocket,
+    WebSocketDisconnect,
 )
 from fastapi.responses import (
     FileResponse,
@@ -53,6 +56,7 @@ from app.maintenance.voice_integrity import VoiceIntegrityService
 from app.operational import OperationalSettingsStore, PRESETS
 from app.system_status import ReadinessError, SystemStatusService
 from app.validation.manager import AsrManager
+from app.status_stream import StatusStream, safe_snapshot
 
 if TYPE_CHECKING:
     from app.services.generation import TtsEngine
@@ -84,6 +88,15 @@ async def lifespan(_app):
 
 
 app = FastAPI(title="Markdown TTS", lifespan=lifespan)
+
+
+@app.exception_handler(Exception)
+async def internal_api_error(request, exc):
+    logging.getLogger("uvicorn.error").exception(
+        "api_exception path=%s type=%s", request.url.path, type(exc).__name__
+    )
+    from fastapi.responses import JSONResponse
+    return JSONResponse(status_code=500, content={"detail": "request_failed: erro interno do backend."})
 
 
 app.mount(
@@ -142,6 +155,18 @@ voice_integrity_service: VoiceIntegrityService | None = None
 asr_manager: AsrManager | None = None
 operational_settings_store: OperationalSettingsStore | None = None
 system_status_service: SystemStatusService | None = None
+status_stream = StatusStream(lambda: stream_snapshot())
+
+
+def stream_snapshot() -> dict:
+    status = get_system_status_service().status(get_operational_settings_store().load())
+    with get_library().database.connect() as connection:
+        row = connection.execute(
+            "SELECT status, phase FROM generation_jobs ORDER BY "
+            "CASE WHEN status IN ('running','cancelling') THEN 0 ELSE 1 END, "
+            "queue_sequence DESC LIMIT 1"
+        ).fetchone()
+    return safe_snapshot(status, dict(row) if row else None)
 
 
 def get_voice_integrity() -> VoiceIntegrityService:
@@ -157,7 +182,7 @@ def get_voice_integrity() -> VoiceIntegrityService:
 def get_asr_manager() -> AsrManager:
     global asr_manager
     if asr_manager is None:
-        asr_manager = AsrManager()
+        asr_manager = AsrManager(on_state_change=status_stream.signal)
     return asr_manager
 
 
@@ -205,6 +230,7 @@ def get_model_manager() -> ModelManager:
         model_manager = ModelManager(
             engine_factory,
             cuda_available=cuda_available,
+            on_state_change=status_stream.signal,
         )
     return model_manager
 
@@ -226,6 +252,7 @@ def get_worker() -> JobWorker:
                 get_engine(), asr_manager=get_asr_manager(),
                 asr_enabled=get_operational_settings_store().load().asr_enabled,
             ),
+            on_change=status_stream.signal,
         )
     return job_worker
 
@@ -238,6 +265,25 @@ def model_status():
 @app.get("/api/system-status")
 def system_status():
     return get_system_status_service().status(get_operational_settings_store().load())
+
+
+@app.websocket("/ws/system-status")
+async def system_status_socket(socket: WebSocket):
+    origin = socket.headers.get("origin", "")
+    host = socket.headers.get("host", "")
+    if host not in {"127.0.0.1:7860", "localhost:7860"} or origin not in {
+        "", "http://127.0.0.1:7860", "http://localhost:7860",
+    }:
+        await socket.close(code=1008)
+        return
+    await status_stream.connect(socket)
+    try:
+        while True:
+            await socket.receive_text()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        status_stream.disconnect(socket)
 
 
 @app.get("/api/health")
@@ -253,7 +299,9 @@ def operational_settings():
 
 @app.put("/api/operational-settings")
 def update_operational_settings(request: PresetRequest):
-    return get_operational_settings_store().save(request.preset).to_dict()
+    result = get_operational_settings_store().save(request.preset).to_dict()
+    status_stream.signal()
+    return result
 
 
 def safe_filename(
@@ -385,7 +433,7 @@ def generate(
         stem,
         markdown,
     )
-    job = JobRepository(library.database).enqueue(
+    job = JobRepository(library.database, on_change=status_stream.signal).enqueue(
         generation_record.generation_id, document.document_id
     )
     get_worker().wake()
@@ -507,7 +555,7 @@ def regenerate_unit(generation_id: str, unit_id: int):
         ).fetchone()
     if pending:
         raise HTTPException(status_code=409, detail="Já existe uma regeneração pendente para esta geração.")
-    job = JobRepository(library.database).enqueue_regeneration(
+    job = JobRepository(library.database, on_change=status_stream.signal).enqueue_regeneration(
         generation_id, generation.document_id, unit_id, generation.artifact_revision
     )
     get_worker().wake()
@@ -646,7 +694,7 @@ def list_jobs():
 
 @app.post("/api/jobs/{job_id}/cancel")
 def cancel_job(job_id: str):
-    repository = JobRepository(get_library().database)
+    repository = JobRepository(get_library().database, on_change=status_stream.signal)
     try:
         job = repository.request_cancel(job_id)
     except KeyError as exc:

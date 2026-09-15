@@ -16,22 +16,15 @@ const openMarkdownButton = $("openMarkdownButton"), fileError = $("fileError");
 const readinessStatus = $("readinessStatus"), gpuStatus = $("gpuStatus"), vramStatus = $("vramStatus");
 const mossStatus = $("mossStatus"), asrStatus = $("asrStatus"), voiceStatus = $("voiceStatus"), presetSelect = $("presetSelect");
 
-let previewTimer, pollTimer, activeJobId, activeGenerationId, pendingPlayback;
+let previewTimer, pollTimer, activeJobId = sessionStorage.getItem("markdownTtsActiveJob"), activeGenerationId, pendingPlayback;
 let timeline = [], activeUnitIndex = -1, lastPlaybackSave = 0, playbackSaveInFlight = false;
 let alignment = {status: "not_available", units: []}, alignedWords = [], activeWordIndex = -1;
 let playbackSavePending = false;
 let regenerationAvailable = false, regenerationBusy = false;
 let previewSequence = 0, activePreviewTab = "preview", filenameWasEdited = false, dragDepth = 0;
-let systemStatusTimer, latestSystemStatus;
-const SYSTEM_STATUS_IDLE_MS = 4000, SYSTEM_STATUS_ACTIVE_MS = 1000;
-const ACTIVE_TTS_STATES = new Set(["loading", "generating", "unloading"]);
-const ACTIVE_ASR_STATES = new Set(["loading", "validating", "unloading"]);
-
-function systemStatusPollInterval(status = latestSystemStatus) {
-    const jobActive = Boolean(activeJobId);
-    const modelActive = ACTIVE_TTS_STATES.has(status?.tts?.state) || ACTIVE_ASR_STATES.has(status?.asr?.state);
-    return jobActive || modelActive ? SYSTEM_STATUS_ACTIVE_MS : SYSTEM_STATUS_IDLE_MS;
-}
+let systemStatusTimer, latestSystemStatus, systemStatusSocket, reconnectTimer;
+let socketRetry = 0, socketConnected = false, jobConnectionFailures = 0;
+const REST_STATUS_FALLBACK_MS = 5000;
 
 const modelStateLabels = {unloaded: "descarregado", loading: "carregando", ready: "pronto", generating: "gerando", unloading: "descarregando", error: "erro"};
 const asrStateLabels = {unloaded: "descarregado", loading: "carregando", ready: "pronto", validating: "validando", unloading: "descarregando", error: "erro"};
@@ -49,7 +42,8 @@ function renderSystemStatus(status) {
     readinessStatus.title = [...status.readiness.errors, ...status.readiness.warnings].join(" ");
 }
 async function refreshSystemStatus(schedule = true) {
-    clearTimeout(systemStatusTimer);
+    if (schedule) clearTimeout(systemStatusTimer);
+    if (socketConnected && schedule) return;
     try {
         const response = await fetch("/api/system-status");
         if (!response.ok) throw new Error("Status operacional indisponível.");
@@ -59,8 +53,35 @@ async function refreshSystemStatus(schedule = true) {
         readinessStatus.textContent = "Status indisponível";
         readinessStatus.title = error.message;
     } finally {
-        if (schedule) systemStatusTimer = setTimeout(refreshSystemStatus, systemStatusPollInterval());
+        if (schedule && !socketConnected) systemStatusTimer = setTimeout(refreshSystemStatus, REST_STATUS_FALLBACK_MS);
     }
+}
+
+function connectSystemStatusSocket() {
+    clearTimeout(reconnectTimer);
+    const scheme = location.protocol === "https:" ? "wss:" : "ws:";
+    const socket = new WebSocket(`${scheme}//${location.host}/ws/system-status`);
+    systemStatusSocket = socket;
+    socket.onopen = () => {
+        socketConnected = true; socketRetry = 0;
+        clearTimeout(systemStatusTimer);
+        readinessStatus.title = "Status em tempo real conectado";
+    };
+    socket.onmessage = event => {
+        try {
+            const payload = JSON.parse(event.data);
+            if (payload.type === "system_status") renderSystemStatus(payload);
+        } catch (_) { /* Ignore malformed status frames, not the job. */ }
+    };
+    socket.onclose = () => {
+        if (systemStatusSocket !== socket) return;
+        socketConnected = false;
+        readinessStatus.title = "Status em tempo real desconectado; reconectando.";
+        refreshSystemStatus();
+        const delay = Math.min(10000, 1000 * 2 ** socketRetry++);
+        reconnectTimer = setTimeout(connectSystemStatusSocket, delay);
+    };
+    socket.onerror = () => socket.close();
 }
 async function loadOperationalSettings() {
     const response = await fetch("/api/operational-settings");
@@ -287,7 +308,9 @@ async function startGeneration() {
         const response = await fetch("/api/generate", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({markdown, filename: filenameInput.value.trim() || "narracao"})});
         const data = await response.json();
         if (!response.ok) throw new Error(data.detail || "Falha ao iniciar.");
-        activeJobId = data.job_id; await pollJob();
+        activeJobId = data.job_id;
+        sessionStorage.setItem("markdownTtsActiveJob", activeJobId);
+        await pollJob();
     } catch (error) {
         setProgress(0, error.message); progressMessage.classList.add("error-message"); generateButton.disabled = false;
     }
@@ -296,17 +319,41 @@ async function pollJob() {
     if (!activeJobId) return;
     try {
         const response = await fetch(`/api/jobs/${activeJobId}`);
-        if (!response.ok) throw new Error("Não foi possível consultar a geração.");
+        if (!response.ok) {
+            if (response.status >= 400 && response.status < 500) {
+                activeJobId = null;
+                sessionStorage.removeItem("markdownTtsActiveJob");
+                throw new Error(`request_failed: status ${response.status}`);
+            }
+            throw new Error(`backend_temporarily_unreachable: status ${response.status}`);
+        }
         const job = await response.json(); renderJobProgress(job);
+        jobConnectionFailures = 0;
         if (job.status === "completed") {
             generationCard.classList.add("hidden"); generateButton.disabled = false;
             activeJobId = null;
-            await loadGeneration(job.generation_id); await loadLibrary(); return;
+            sessionStorage.removeItem("markdownTtsActiveJob");
+            try {
+                await loadGeneration(job.generation_id); await loadLibrary();
+            } catch (_) {
+                progressMessage.textContent = "Geração concluída. Conexão ao player temporariamente indisponível; abra pela Library.";
+            }
+            return;
         }
-        if (["error", "failed", "cancelled"].includes(job.status)) throw new Error(job.error || job.message);
+        if (["error", "failed", "cancelled"].includes(job.status)) {
+            activeJobId = null;
+            sessionStorage.removeItem("markdownTtsActiveJob");
+            throw new Error(`job_failed: ${job.error || job.message}`);
+        }
         pollTimer = setTimeout(pollJob, 500);
     } catch (error) {
-        activeJobId = null;
+        if (activeJobId) {
+            jobConnectionFailures += 1;
+            progressMessage.classList.remove("error-message");
+            progressMessage.textContent = "Conexão temporariamente indisponível. Reconectando...";
+            pollTimer = setTimeout(pollJob, Math.min(10000, 1000 * 2 ** Math.min(jobConnectionFailures - 1, 4)));
+            return;
+        }
         progressMessage.classList.add("error-message"); progressMessage.textContent = error.message; generateButton.disabled = false;
         if (regenerationBusy) {
             regenerationBusy = false;
@@ -509,4 +556,5 @@ document.addEventListener("keydown", event => {
 });
 window.addEventListener("beforeunload", () => savePlayback(true));
 
-loadLibrary(); updatePreview(); loadOperationalSettings(); refreshSystemStatus();
+loadLibrary(); updatePreview(); loadOperationalSettings(); connectSystemStatusSocket();
+if (activeJobId) { generationCard.classList.remove("hidden"); generateButton.disabled = true; pollJob(); }

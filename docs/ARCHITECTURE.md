@@ -299,10 +299,19 @@ O player deve persistir velocidade e posicao, oferecer anterior/proxima, +/-10 s
 `SystemStatusService` agrega telemetria GPU global, disponibilidade local,
 integridade da voz, estados do `ModelManager`/`AsrManager`, disco e readiness.
 Dados de hardware/paths sao sondados com cache thread-safe de 0,9 segundo;
-respostas publicas nao incluem paths, hashes, documentos ou erros internos. A UI
-consulta a cada quatro segundos em idle e a cada segundo durante job ou estados
-loading/generating/validating/unloading. Assim ha no maximo aproximadamente uma
-execucao de `nvidia-smi` por segundo, com fallback Torch e rotulo VRAM global.
+respostas publicas nao incluem paths, hashes, documentos ou erros internos.
+`StatusStream` envia snapshots por `/ws/system-status`: callbacks de transicoes
+MOSS/ASR/job acordam o broker imediatamente; uma task global amostra VRAM a cada
+4 s em idle ou 1 s em atividade, apenas com clientes conectados. Nenhuma task
+por aba executa `nvidia-smi`. O REST permanece para diagnostico/fallback de 5 s.
+O WebSocket aceita somente Host/Origin localhost. Ha fallback Torch e rotulo VRAM
+global.
+
+O `JobWorker` continua numa thread unica, separada do event loop. Um erro de
+request REST durante inferencia nao e prova de falha do job: a UI conserva o
+`job_id` em sessionStorage e reconecta com backoff; somente estado `failed` do
+SQLite encerra o acompanhamento. Antes, `pollJob()` limpava `activeJobId` em
+qualquer excecao, e `refreshSystemStatus(false)` cancelava o timer sem rearma-lo.
 
 `OperationalSettingsStore` persiste atomicamente apenas `standard` ou
 `validated`. A factory do worker le a escolha ao iniciar a proxima operacao e

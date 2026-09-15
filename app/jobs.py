@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+import logging
 import uuid
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -12,6 +13,8 @@ from app.persistence.library import LibraryStore, utc_now
 from app.services.generation import GenerationCancelled, GenerationService
 from app.services.regeneration import RegenerationService
 from app.progress import ProgressPhase, ProgressTracker
+
+logger = logging.getLogger("uvicorn.error")
 
 
 @dataclass(frozen=True)
@@ -50,8 +53,13 @@ ALLOWED_TRANSITIONS = {
 
 
 class JobRepository:
-    def __init__(self, database: Database) -> None:
+    def __init__(self, database: Database, on_change: Callable[[], None] | None = None) -> None:
         self.database = database
+        self.on_change = on_change
+
+    def _notify(self) -> None:
+        if self.on_change:
+            self.on_change()
 
     def enqueue(self, generation_id: str, document_id: str) -> GenerationJob:
         job_id, now = uuid.uuid4().hex, utc_now()
@@ -61,6 +69,7 @@ class JobRepository:
                 "status, created_at, updated_at, message) VALUES (?, ?, ?, 'queued', ?, ?, ?)",
                 (job_id, generation_id, document_id, now, now, "Aguardando início..."),
             )
+        self._notify()
         return self.get(job_id)
 
     def enqueue_regeneration(self, generation_id: str, document_id: str, unit_id: int, revision: int) -> GenerationJob:
@@ -74,6 +83,7 @@ class JobRepository:
                 "INSERT INTO unit_regenerations (regeneration_id,job_id,generation_id,unit_id,previous_revision,new_revision,status,created_at) VALUES (?,?,?,?,?,?,?,?)",
                 (regeneration_id, job_id, generation_id, unit_id, revision, revision + 1, "queued", now),
             )
+        self._notify()
         return self.get(job_id)
 
     def _row(self, row) -> GenerationJob | None:
@@ -124,6 +134,7 @@ class JobRepository:
             )
             if updated.rowcount != 1:
                 return None
+        self._notify()
         return self.get(row[0])
 
     def transition(self, job_id: str, status: str, *, error: str | None = None) -> GenerationJob:
@@ -151,6 +162,7 @@ class JobRepository:
                  }.get(status, current.message),
                  status, status, job_id),
             )
+        self._notify()
         return self.get(job_id)
 
     def update_progress(self, job_id: str, progress: GenerationProgress) -> None:
@@ -165,6 +177,7 @@ class JobRepository:
                  progress.progress, progress.eta_seconds, progress.elapsed_seconds,
                  progress.phase_progress, now, now, job_id),
             )
+        self._notify()
 
     def request_cancel(self, job_id: str) -> GenerationJob:
         job = self.get(job_id)
@@ -212,9 +225,9 @@ class JobRepository:
 
 
 class JobWorker:
-    def __init__(self, library: LibraryStore, service_factory: Callable[[], GenerationService], poll_interval: float = 0.2) -> None:
+    def __init__(self, library: LibraryStore, service_factory: Callable[[], GenerationService], poll_interval: float = 0.2, on_change: Callable[[], None] | None = None) -> None:
         self.library = library
-        self.repository = JobRepository(library.database)
+        self.repository = JobRepository(library.database, on_change=on_change)
         self.service_factory = service_factory
         self.poll_interval = poll_interval
         self._stop = threading.Event()
@@ -250,6 +263,7 @@ class JobWorker:
             return False
         generation = self.library.generations.get(job.generation_id)
         document = self.library.documents.get(job.document_id)
+        logger.info("job_started job_id=%s generation_id=%s operation=%s", job.job_id, job.generation_id, job.operation)
         try:
             self.library.require_voice_integrity()
             tracker = ProgressTracker(
@@ -291,11 +305,13 @@ class JobWorker:
                 should_cancel=lambda: self.repository.get(job.job_id).status == "cancelling",
             )
             self.repository.transition(job.job_id, "completed")
+            logger.info("job_completed job_id=%s generation_id=%s", job.job_id, job.generation_id)
         except GenerationCancelled:
             self.repository.transition(job.job_id, "cancelled")
             if job.operation == "regenerate_unit":
                 self._finish_regeneration(job, "cancelled")
         except Exception as exc:
+            logger.exception("worker_exception job_id=%s generation_id=%s type=%s", job.job_id, job.generation_id, type(exc).__name__)
             current = self.repository.get(job.job_id)
             if current.status in {"running", "cancelling"}:
                 self.repository.transition(

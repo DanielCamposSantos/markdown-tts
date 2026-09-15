@@ -36,11 +36,13 @@ class ModelManager:
         idle_timeout_seconds: float = MODEL_IDLE_TIMEOUT_SECONDS,
         clock: Callable[[], float] = time.monotonic,
         cuda_available: Callable[[], bool] | None = None,
+        on_state_change: Callable[[], None] | None = None,
     ) -> None:
         self._engine_factory = engine_factory
         self._idle_timeout = idle_timeout_seconds
         self._clock = clock
         self._cuda_available = cuda_available
+        self._on_state_change = on_state_change
         self._condition = threading.Condition(threading.RLock())
         self._generation_lock = threading.Lock()
         self._stop = threading.Event()
@@ -61,6 +63,8 @@ class ModelManager:
             raise ValueError(f"Invalid model transition: {self._state.value} -> {target.value}")
         self._state = target
         self._condition.notify_all()
+        if self._on_state_change:
+            self._on_state_change()
 
     def start(self) -> None:
         with self._condition:

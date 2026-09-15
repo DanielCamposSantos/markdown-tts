@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "baseline_id": "windows-py312-cu128-8741eca68ca7",
+  "baseline_id": "windows-py312-cu128-0b02c95f6e62",
   "python": {
     "supported": ">=3.12,<3.13",
     "validated": "3.12.10"
@@ -67,6 +67,6 @@
   },
   "dependencies": {
     "lock_path": "requirements/constraints.txt",
-    "lock_sha256": "8741eca68ca7ccfaaaa2d10d9fcfb9ff63342da27e32963020242930f6a5b5eb"
+    "lock_sha256": "0b02c95f6e62a2823cfb180e5bc461cf4d232630776457e9653a9e8342bf694e"
   }
 }

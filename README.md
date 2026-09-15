@@ -353,8 +353,11 @@ nao altera o PATH global e nunca substitui a voz canonica.
 
 ## Status operacional e presets
 
-A barra compacta consulta `GET /api/system-status` a cada quatro segundos em
-ociosidade e a cada segundo durante jobs ou load/generation/unload de MOSS/ASR. Ela
+A barra compacta recebe snapshots de `/ws/system-status`. Mudanças de estado de
+MOSS/ASR/job sinalizam o stream; uma única task global amostra VRAM a cada quatro
+segundos em idle ou um segundo em atividade, independentemente do número de abas.
+Ao perder o WebSocket, a UI reconecta com backoff e usa temporariamente
+`GET /api/system-status` a cada cinco segundos. Ela
 mostra GPU, VRAM global, estado real do MOSS/ASR, voz e readiness. Em Windows a
 VRAM e rotulada como global, nao como consumo exclusivo do app. A coleta tem
 cache de 0,9 segundo (no maximo aproximadamente um `nvidia-smi` por segundo,

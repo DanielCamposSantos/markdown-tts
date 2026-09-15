@@ -7,6 +7,7 @@ from app.audio_generation_guard import GenerationCancelled, RETRY_SEED_OFFSET
 from app.config import ASR_AUTO_REGENERATION_SEED_OFFSET, BASE_SEED
 from app.services.asr_validation import AsrValidationCoordinator, AsrValidationFailedError
 from app.services.regeneration import MANUAL_REGENERATION_SEED_OFFSET
+from app.progress import ProgressTracker
 from app.speech_plan import SpeechUnit
 from app.validation.asr import AsrResult
 from app.validation.manager import AsrBackendError, AsrManager
@@ -138,3 +139,42 @@ def test_asr_load_exception_is_explicit(tmp_path):
     manager = AsrManager(Broken, model_path=model)
     with pytest.raises(AsrBackendError, match="carregar.*CUDA unavailable"):
         manager.load()
+
+
+def test_stress_50_units_five_initial_failures_two_corrective_rounds(tmp_path):
+    units = [unit(index, "um dois três") for index in range(1, 51)]
+    failed_ids = {1, 2, 3, 4, 5}
+    values = {}
+    for item in units:
+        values[f"{item.index:06d}.wav"] = (
+            ["ruído", "um dois três"] if item.index in failed_ids - {1} else
+            ["ruído", "ainda errado", "um dois três"] if item.index == 1 else
+            ["um dois três"]
+        )
+    service, backend = coordinator(tmp_path, values)
+    tts = FakeTts()
+    progress = []
+    tracker = ProgressTracker(progress.append)
+    tracker.set_units(units)
+    outcome = service.validate_and_correct(
+        units, tmp_path, tts,
+        progress_callback=lambda phase, current, total, message: tracker.report(phase, current, total, message),
+    )
+    assert len(backend.calls) == 56
+    assert tts.batches == [
+        ([1, 2, 3, 4, 5], ASR_AUTO_REGENERATION_SEED_OFFSET),
+        ([1], ASR_AUTO_REGENERATION_SEED_OFFSET * 2),
+    ]
+    assert outcome.metadata["summary"] == {
+        "pass": 50, "warn": 0, "fail": 0,
+        "auto_regenerated_units": [1, 2, 3, 4, 5],
+    }
+    assert progress and all(a.progress <= b.progress for a, b in zip(progress, progress[1:]))
+
+
+def test_persistent_asr_fail_does_not_break_health(tmp_path):
+    service, _ = coordinator(tmp_path, {"000001.wav": ["ruído"] * 3})
+    with pytest.raises(AsrValidationFailedError):
+        service.validate_and_correct([unit(1, "um dois três")], tmp_path, FakeTts())
+    import web
+    assert web.health() == {"application": "markdown-tts", "status": "ok"}

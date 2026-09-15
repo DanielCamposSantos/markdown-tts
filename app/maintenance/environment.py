@@ -16,7 +16,7 @@ from app.reproducibility import baseline_lock_consistent, file_sha256, load_base
 
 CRITICAL_DISTRIBUTIONS = (
     "torch", "transformers", "huggingface-hub", "tokenizers", "numpy",
-    "soundfile", "fastapi", "uvicorn", "markdown-it-py", "pydantic",
+    "soundfile", "fastapi", "uvicorn", "wsproto", "markdown-it-py", "pydantic",
 )
 ASR_DISTRIBUTIONS = ("faster-whisper", "ctranslate2", "av")
 

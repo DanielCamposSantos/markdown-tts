@@ -424,6 +424,11 @@ Install Reset e Release Audit. Nenhuma nova feature deve ser
 iniciada antes dessa auditoria; fixtures, modelos e artefatos permanecem
 preservados ate la.
 
+**Hotfix 14.2:** status operacional agora usa WebSocket com amostragem VRAM
+global unica e fallback REST. Acompanhamento de jobs recupera falhas transitórias
+de request sem converter uma desconexao em falha terminal. Final Cleanup permanece
+bloqueado ate validacao humana deste hotfix.
+
 ## Ordem recomendada resumida
 
 `0 contratos -> 1 limites -> 2 persistencia -> 3 jobs/fila -> 4 lifecycle GPU -> 5 player/retomada -> 6 regeneracao -> 7 Markdown -> 8 progresso -> 9 ASR -> 10 pronuncia -> 11 retencao -> 12 reproducibilidade -> 13 UX -> 14 alinhamento/desktop`.

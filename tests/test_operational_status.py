@@ -177,16 +177,19 @@ def test_frontend_has_status_presets_moderate_polling_and_preflight():
     assert 'id="presetSelect"' in html and 'aria-label="Status operacional"' in html
     for label in ("GPU:", "VRAM global:", "MOSS:", "ASR:", "Voz:"): assert label in html
     assert 'fetch("/api/system-status")' in js
-    assert "SYSTEM_STATUS_IDLE_MS = 4000" in js
-    assert "SYSTEM_STATUS_ACTIVE_MS = 1000" in js
-    assert "systemStatusPollInterval()" in js
+    assert "connectSystemStatusSocket()" in js
+    assert "REST_STATUS_FALLBACK_MS = 5000" in js
     assert "latestSystemStatus.readiness.ready" in js
     for state in ("cancelling", "cancelled", "interrupted", "completed"): assert state in js
 
 
 def test_frontend_live_vram_polling_states_and_global_label():
     js = Path("static/app.js").read_text(encoding="utf-8")
-    assert 'new Set(["loading", "generating", "unloading"])' in js
-    assert 'new Set(["loading", "validating", "unloading"])' in js
-    assert "Boolean(activeJobId)" in js
+    assert 'new WebSocket(`${scheme}//${location.host}/ws/system-status`)' in js
+    assert "socket.onmessage" in js and "socket.onclose" in js
+    assert "Conexão temporariamente indisponível. Reconectando..." in js
+    assert 'sessionStorage.setItem("markdownTtsActiveJob", activeJobId)' in js
+    assert "jobConnectionFailures += 1" in js
+    assert "job_failed:" in js
+    assert "setTimeout(connectSystemStatusSocket, delay)" in js
     assert "VRAM global:" in js

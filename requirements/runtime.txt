@@ -8,6 +8,7 @@ numpy
 soundfile
 fastapi
 uvicorn
+wsproto
 markdown-it-py
 pydantic
 python-multipart
