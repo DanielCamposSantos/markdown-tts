@@ -417,3 +417,19 @@ A evolucao planejada deve acontecer em fases pequenas, sempre preservando o comp
 8. alinhamento palavra por palavra, presets e eventual aplicativo desktop.
 
 Nenhuma dessas etapas deve trocar o motor MOSS ou a estrategia vocal atual sem uma razao explicita e uma validacao de regressao de qualidade.
+
+## Reset local do estado de uso
+
+Alguns ambientes automatizados bloqueiam exclusoes. O cleanup real deve ser
+executado pelo usuario em um PowerShell local, nunca como parte da suite normal.
+Com launcher/backend parados e codigo protegido por commit Git, rode
+`./scripts/final_cleanup.ps1` para revisar o dry-run. A aplicacao real exige
+`./scripts/final_cleanup.ps1 -Apply -ConfirmCleanup` e Git limpo. O script remove
+somente Library, backups/logs/runtime locais, audio/resultados gerados de
+benchmark e caches regeneraveis do projeto; preserva `.venv`, modelos locais,
+voz, source e lock (incluindo wsproto). Nao desinstala dependencias.
+
+Depois, execute `./scripts/validate_clean_install.ps1` para recriar o schema
+vazio sem carregar modelos e validar testes, integridade e contagens zero.
+Abra o launcher, faca uma geracao curta com preset Padrao para testar playback,
+encerre o launcher e repita apply + validacao para voltar ao estado zero.

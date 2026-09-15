@@ -8,6 +8,8 @@ outputs/
 temp/
 runtime/
 library/
+backups/
+logs/
 
 .cache/
 .pytest_cache/
@@ -27,4 +29,5 @@ voices/*.wav
 benchmarks/models/
 benchmarks/results/
 benchmarks/audio/*.wav
+benchmarks/audio/*.mp3
 benchmarks/audio/manifest.json

@@ -419,3 +419,13 @@ A suite normal nunca deve baixar modelo. Mudancas no caminho MOSS devem exigir v
 10. Somente depois avaliar alinhamento por palavra e aplicativo desktop.
 
 Cada passo deve ter commit pequeno, criterios de aceitacao, teste focado e rollback. O caminho atual permanece disponivel ate o novo caminho reproduzir o comportamento do baseline.
+
+## Reset do estado local
+
+O cleanup nao e operacao do runtime: `scripts/final_cleanup.ps1` enumera paths
+gerenciados, verifica root, porta, Git, source versionado e reparse points,
+mostra dry-run e somente aplica com duas flags explicitas. Modelos em
+`benchmarks/models`, MOSS vendor, `.venv`, voz e lock sao protegidos.
+`scripts/validate_clean_install.ps1` usa `LibraryStore` para bootstrap das
+migrations sem inferencia, verifica `PRAGMA quick_check` e contagens zero.
+Dependencias nao sao desinstaladas pelo cleanup de filesystem.

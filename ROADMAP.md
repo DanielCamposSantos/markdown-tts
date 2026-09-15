@@ -431,6 +431,13 @@ bloqueado ate validacao humana deste hotfix.
 
 ## Ordem recomendada resumida
 
+**Final Cleanup / Clean Install Reset:** executado localmente pelo usuario apos
+checkpoint Git. `scripts/final_cleanup.ps1` inicia em dry-run e exige
+`-Apply -ConfirmCleanup` para remover somente estado gerenciado; modelos,
+`.venv`, voz, source e baseline permanecem. A validacao posterior usa
+`scripts/validate_clean_install.ps1`. Ambientes automatizados que bloqueiam
+exclusoes nao devem tentar contornar a politica.
+
 `0 contratos -> 1 limites -> 2 persistencia -> 3 jobs/fila -> 4 lifecycle GPU -> 5 player/retomada -> 6 regeneracao -> 7 Markdown -> 8 progresso -> 9 ASR -> 10 pronuncia -> 11 retencao -> 12 reproducibilidade -> 13 UX -> 14 alinhamento/desktop`.
 
 A ordem pode ser ajustada somente apos revisar dependencias e criterios da fase anterior. Nao iniciar a Fase 0 sem autorizacao explicita.
